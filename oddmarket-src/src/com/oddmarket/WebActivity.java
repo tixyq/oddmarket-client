@@ -5,17 +5,18 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.net.http.SslError;
 import android.os.Bundle;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.SslErrorHandler;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.Toast;
-import android.util.Log;
 
 public class WebActivity extends Activity {
 
@@ -54,18 +55,7 @@ public class WebActivity extends Activity {
         webView.setLayoutParams(webParams);
 
         webView.getSettings().setJavaScriptEnabled(true);
-        webView.getSettings().setSupportZoom(false);
-        webView.getSettings().setBuiltInZoomControls(false);
         webView.setBackgroundColor(Theme.windowBackground());
-
-        try {
-            java.lang.reflect.Method m = android.view.View.class.getMethod("setScrollbarFadingEnabled", boolean.class);
-            m.invoke(webView, false);
-        } catch (Exception e) {
-            Log.d(Utils.TAG, "setScrollbarFadingEnabled not available", e);
-        }
-
-        webView.setVerticalScrollBarEnabled(true);
 
         webView.setWebChromeClient(new WebChromeClient() {
 
@@ -151,6 +141,16 @@ public class WebActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
             }
+
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                Toast.makeText(WebActivity.this, description, Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                handler.proceed();
+            }
         });
 
         webView.loadUrl(currentUrl);
@@ -190,7 +190,6 @@ public class WebActivity extends Activity {
     }
 
     private void finishAfterDebugRedirect() {
-        FileLogger.w(Utils.TAG, "Blocked navigation to c.php debug interface, closing screen");
         if (!isFinishing()) {
             finish();
         }

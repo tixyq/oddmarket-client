@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.net.http.SslError;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
@@ -21,6 +22,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.webkit.SslErrorHandler;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.AdapterView;
@@ -58,7 +60,7 @@ public class DetailsActivity extends Activity {
 
     private AccountManager.Cancelable pendingReviewsAccountCheck;
 
-    private static final int REVIEWS_LOAD_TIMEOUT_MS = 8000;
+    private static final int REVIEWS_LOAD_TIMEOUT_MS = 12000;
     private String siteVersion = "";
     private String downloadUrl = "";
     private String appName = "";
@@ -425,6 +427,8 @@ public class DetailsActivity extends Activity {
 
         final FrameLayout container = (FrameLayout) findViewById(R.id.details_reviews_container);
         if (container == null) return;
+        reviewsDead = false;
+        container.setVisibility(android.view.View.GONE);
 
         if (!AccountManager.isAccountSystemReachable(this)) {
 
@@ -452,9 +456,6 @@ public class DetailsActivity extends Activity {
                 ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         reviewsWebView.getSettings().setJavaScriptEnabled(true);
         reviewsWebView.setBackgroundColor(Theme.windowBackground());
-        reviewsWebView.setVerticalScrollBarEnabled(false);
-        reviewsWebView.setHorizontalScrollBarEnabled(false);
-        Utils.disableOverScrollIfSupported(reviewsWebView);
 
         final int maxHeightPx = getResources().getDisplayMetrics().heightPixels * 2;
 
@@ -469,23 +470,43 @@ public class DetailsActivity extends Activity {
             @Override
             public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
 
-                cancelReviewsTimeout();
-                container.setVisibility(View.GONE);
+                killReviewsBlock(container);
+            }
+
+            public void onReceivedHttpError(WebView view, android.webkit.WebResourceRequest request, android.webkit.WebResourceResponse errorResponse) {
+                boolean mainFrame = true;
+                try {
+                    mainFrame = request.isForMainFrame();
+                } catch (Exception ignored) {}
+                if (mainFrame) {
+                    killReviewsBlock(container);
+                }
+            }
+
+            public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                handler.proceed();
             }
         });
 
         container.addView(reviewsWebView);
-        container.setVisibility(View.VISIBLE);
         reviewsWebView.loadUrl(UrlBuilder.reviewsUrl(this, currentPkg));
 
         reviewsTimeoutRunnable = new Runnable() {
             public void run() {
                 if (isFinishing() || reviewsWebView == null) return;
                 reviewsWebView.stopLoading();
-                container.setVisibility(View.GONE);
+                killReviewsBlock(container);
             }
         };
         handler.postDelayed(reviewsTimeoutRunnable, REVIEWS_LOAD_TIMEOUT_MS);
+    }
+
+    private boolean reviewsDead = false;
+
+    private void killReviewsBlock(android.view.View container) {
+        reviewsDead = true;
+        cancelReviewsTimeout();
+        container.setVisibility(View.GONE);
     }
 
     private void cancelReviewsTimeout() {
@@ -493,22 +514,49 @@ public class DetailsActivity extends Activity {
             handler.removeCallbacks(reviewsTimeoutRunnable);
             reviewsTimeoutRunnable = null;
         }
-    }
-
-    private void scheduleReviewsHeightChecks(final WebView view, final int maxHeightPx) {
-        int[] delaysMs = {300, 800, 1600, 3000};
-        for (final int delay : delaysMs) {
-            handler.postDelayed(new Runnable() {
-                public void run() {
-                    if (isFinishing() || reviewsWebView == null) return;
-                    applyMeasuredReviewsHeight(view.getContentHeight(), maxHeightPx);
-                }
-            }, delay);
+        if (reviewsPollRunnable != null) {
+            handler.removeCallbacks(reviewsPollRunnable);
+            reviewsPollRunnable = null;
         }
     }
 
+    private static final int REVIEWS_POLL_MS = 500;
+    private static final int REVIEWS_POLL_MAX = 24;
+    private Runnable reviewsPollRunnable;
+    private int reviewsPollLeft;
+    private int reviewsStableCount;
+    private int reviewsLastHeight;
+
+    private void scheduleReviewsHeightChecks(final WebView view, final int maxHeightPx) {
+        if (reviewsPollRunnable != null) {
+            handler.removeCallbacks(reviewsPollRunnable);
+        }
+        reviewsPollLeft = REVIEWS_POLL_MAX;
+        reviewsStableCount = 0;
+        reviewsLastHeight = -1;
+        reviewsPollRunnable = new Runnable() {
+            public void run() {
+                if (isFinishing() || reviewsWebView == null) return;
+                int h = view.getContentHeight();
+                applyMeasuredReviewsHeight(h, maxHeightPx);
+                if (h > 0 && h == reviewsLastHeight) {
+                    reviewsStableCount++;
+                } else {
+                    reviewsStableCount = 0;
+                    reviewsLastHeight = h;
+                }
+                if (--reviewsPollLeft > 0 && reviewsStableCount < 3) {
+                    handler.postDelayed(reviewsPollRunnable, REVIEWS_POLL_MS);
+                } else {
+                    reviewsPollRunnable = null;
+                }
+            }
+        };
+        handler.post(reviewsPollRunnable);
+    }
+
     private void applyMeasuredReviewsHeight(int cssHeight, int maxHeightPx) {
-        if (reviewsWebView == null || isFinishing()) return;
+        if (reviewsWebView == null || isFinishing() || reviewsDead) return;
         if (cssHeight <= 0) return;
 
         float density = getResources().getDisplayMetrics().density;
@@ -519,6 +567,10 @@ public class DetailsActivity extends Activity {
         if (params.height != boundedPx) {
             params.height = boundedPx;
             reviewsWebView.setLayoutParams(params);
+        }
+        android.view.View container = findViewById(R.id.details_reviews_container);
+        if (container != null && container.getVisibility() != android.view.View.VISIBLE) {
+            container.setVisibility(android.view.View.VISIBLE);
         }
     }
 

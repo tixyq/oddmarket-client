@@ -89,6 +89,11 @@ public class MainActivity extends Activity {
 
     private boolean isDestroyed = false;
 
+    private static final long ACCOUNT_CHECK_THROTTLE_MS = 30000;
+    private static final long RATINGS_THROTTLE_MS = 600000;
+    private long lastAccountCheckMs = 0;
+    private long lastRatingsOkMs = 0;
+
     private AccountManager.Cancelable pendingAccountCheck;
     private AccountManager.Cancelable pendingRatingsFetch;
     private AccountManager.Cancelable pendingDeleteAccount;
@@ -539,10 +544,13 @@ public class MainActivity extends Activity {
             loadBanners();
         }
 
-        refreshAccountStatus();
+        refreshAccountStatus(false);
     }
 
-    private void refreshAccountStatus() {
+    private void refreshAccountStatus(final boolean force) {
+        if (!force && System.currentTimeMillis() - lastAccountCheckMs < ACCOUNT_CHECK_THROTTLE_MS) {
+            return;
+        }
         if (pendingAccountCheck != null) {
             pendingAccountCheck.cancel();
             pendingAccountCheck = null;
@@ -550,6 +558,7 @@ public class MainActivity extends Activity {
         pendingAccountCheck = AccountManager.check(this, rootLayout, new AccountManager.Callback() {
             public void onResult(boolean loggedIn, String nickname) {
                 pendingAccountCheck = null;
+                lastAccountCheckMs = System.currentTimeMillis();
                 if (isDestroyed) return;
                 Utils.invalidateOptionsMenuIfSupported(MainActivity.this);
                 updateAccountBadge(nickname);
@@ -588,7 +597,7 @@ public class MainActivity extends Activity {
         currentPage = 1;
         loadData(true);
         loadBanners();
-        refreshAccountStatus();
+        refreshAccountStatus(true);
     }
 
     private void openWebScreen(String url) {
@@ -1287,6 +1296,9 @@ public class MainActivity extends Activity {
     }
 
     private void fetchRatings() {
+        if (System.currentTimeMillis() - lastRatingsOkMs < RATINGS_THROTTLE_MS) {
+            return;
+        }
         if (pendingRatingsFetch != null) {
             pendingRatingsFetch.cancel();
             pendingRatingsFetch = null;
@@ -1296,6 +1308,7 @@ public class MainActivity extends Activity {
                 pendingRatingsFetch = null;
                 if (isDestroyed) return;
                 if (ratings == null) return;
+                lastRatingsOkMs = System.currentTimeMillis();
                 ratingsByPkg.clear();
                 ratingsByPkg.putAll(ratings);
                 if (adapter != null) adapter.notifyDataSetChanged();
@@ -1595,7 +1608,7 @@ public class MainActivity extends Activity {
             currentPage = 1;
             loadData(true);
             loadBanners();
-            refreshAccountStatus();
+            refreshAccountStatus(true);
             return true;
         } else if (item.getItemId() == MENU_ID_CHECK_UPDATES) {
             fetchSpecificApp("com.oddmarket");

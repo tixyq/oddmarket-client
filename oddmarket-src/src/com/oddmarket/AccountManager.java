@@ -4,10 +4,10 @@ package com.oddmarket;
 import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.graphics.Bitmap;
-import android.net.Uri;
+import android.net.http.SslError;
 import android.os.Handler;
 import android.view.ViewGroup;
+import android.webkit.SslErrorHandler;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
@@ -19,13 +19,9 @@ public final class AccountManager {
     private static final String KEY_LOGGED_IN = "account_logged_in";
     private static final String KEY_NICKNAME = "account_nickname";
 
-    private static final int WEBVIEW_TIMEOUT_MS = 15000;
+    private static final int WEBVIEW_TIMEOUT_MS = 25000;
 
     private static final int QUIET_PERIOD_MS = 350;
-
-    private static final String PROBE_URL_PREFIX = "oddmarket-probe://body?v=";
-
-    private static final int CHUNK_SIZE = 500;
 
     private static final Pattern USERNAME_PATTERN =
             Pattern.compile("^[A-Za-z0-9_]{1,25}$");
@@ -119,11 +115,11 @@ public final class AccountManager {
 
         final Handler handler = new Handler(activity.getMainLooper());
 
+        final Object lock = new Object();
         final boolean[] done = new boolean[]{false};
-        final Runnable[] probe = new Runnable[1];
-
-        final StringBuilder collectedBody = new StringBuilder();
-        final int[] nextOffset = new int[]{0};
+        final int[] gen = new int[]{0};
+        final String[] lastUrl = new String[]{url};
+        final Runnable[] fetchRun = new Runnable[1];
 
         final Runnable cleanup = new Runnable() {
             public void run() {
@@ -135,74 +131,87 @@ public final class AccountManager {
             }
         };
 
-        webView.setWebViewClient(new WebViewClient() {
-            public boolean shouldOverrideUrlLoading(WebView view, String loadingUrl) {
-                if (loadingUrl != null && loadingUrl.startsWith(PROBE_URL_PREFIX)) {
-                    if (!done[0]) {
-                        String chunk;
-                        boolean more;
-                        try {
-                            Uri probeUri = Uri.parse(loadingUrl);
-                            chunk = probeUri.getQueryParameter("v");
-                            more = "1".equals(probeUri.getQueryParameter("m"));
-                        } catch (Exception e) {
-                            chunk = null;
-                            more = false;
-                        }
-                        if (chunk != null) collectedBody.append(chunk);
-                        if (more) {
-
-                            nextOffset[0] += CHUNK_SIZE;
-                            handler.post(probe[0]);
-                        } else {
-                            done[0] = true;
-                            String body = collectedBody.toString();
-                            cleanup.run();
-                            if (callback != null) callback.onBody(body);
-                        }
-                    }
-                    return true;
+        fetchRun[0] = new Runnable() {
+            public void run() {
+                synchronized (lock) {
+                    if (done[0]) return;
                 }
-                return false;
+                final int myGen;
+                final String myUrl;
+                synchronized (lock) {
+                    myGen = gen[0];
+                    myUrl = lastUrl[0];
+                }
+                new Thread(new Runnable() {
+                    public void run() {
+                        String direct = AntiBot.fetchDirect(activity.getApplicationContext(), myUrl, label);
+                        if (direct != null && !AntiBot.isChallenge(direct)) {
+                            final String clean = direct;
+                            handler.post(new Runnable() {
+                                public void run() {
+                                    synchronized (lock) {
+                                        if (done[0] || myGen != gen[0]) return;
+                                        done[0] = true;
+                                    }
+                                    cleanup.run();
+                                    if (callback != null) callback.onBody(clean);
+                                }
+                            });
+                            return;
+                        }
+                        final String body = fetchBodyWithCookies(webView, myUrl, label);
+                        handler.post(new Runnable() {
+                            public void run() {
+                                synchronized (lock) {
+                                    if (done[0] || myGen != gen[0]) return;
+                                    if (body == null || body.contains("toNumbers")) {
+                                        handler.removeCallbacks(fetchRun[0]);
+                                        handler.postDelayed(fetchRun[0], QUIET_PERIOD_MS);
+                                        return;
+                                    }
+                                    done[0] = true;
+                                }
+                                cleanup.run();
+                                if (callback != null) callback.onBody(body);
+                            }
+                        });
+                    }
+                }).start();
             }
+        };
 
-            public void onPageStarted(WebView view, String startedUrl, Bitmap favicon) {
-                handler.removeCallbacks(probe[0]);
-            }
-
+        webView.setWebViewClient(new WebViewClient() {
             public void onPageFinished(WebView view, String finishedUrl) {
-                if (done[0]) return;
-                handler.removeCallbacks(probe[0]);
-                handler.postDelayed(probe[0], QUIET_PERIOD_MS);
+                synchronized (lock) {
+                    if (done[0]) return;
+                    gen[0]++;
+                    if (finishedUrl != null) lastUrl[0] = finishedUrl;
+                }
+                handler.removeCallbacks(fetchRun[0]);
+                handler.postDelayed(fetchRun[0], QUIET_PERIOD_MS);
             }
 
             public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-                if (done[0]) return;
-                done[0] = true;
+                synchronized (lock) {
+                    if (done[0]) return;
+                    done[0] = true;
+                }
                 FileLogger.w(Utils.TAG, label + ": WebView load error " + errorCode + " (" + description + ")");
                 cleanup.run();
                 if (callback != null) callback.onBody(null);
             }
-        });
 
-        probe[0] = new Runnable() {
-            public void run() {
-                if (done[0]) return;
-
-                webView.loadUrl("javascript:(function(){"
-                        + "var t=document.body.innerText;"
-                        + "var o=" + nextOffset[0] + ";"
-                        + "var c=t.substr(o," + CHUNK_SIZE + ");"
-                        + "var m=(o+c.length<t.length)?1:0;"
-                        + "location.href='" + PROBE_URL_PREFIX + "'+encodeURIComponent(c)+'&m='+m;"
-                        + "})();");
+            public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                handler.proceed();
             }
-        };
+        });
 
         handler.postDelayed(new Runnable() {
             public void run() {
-                if (done[0]) return;
-                done[0] = true;
+                synchronized (lock) {
+                    if (done[0]) return;
+                    done[0] = true;
+                }
                 FileLogger.w(Utils.TAG, label + ": timed out after " + WEBVIEW_TIMEOUT_MS + "ms");
                 cleanup.run();
                 if (callback != null) callback.onBody(null);
@@ -213,11 +222,115 @@ public final class AccountManager {
 
         return new Cancelable() {
             public void cancel() {
-                if (done[0]) return;
-                done[0] = true;
+                synchronized (lock) {
+                    if (done[0]) return;
+                    done[0] = true;
+                }
                 cleanup.run();
             }
         };
+    }
+
+    private static String fetchBodyWithCookies(WebView view, String url, String label) {
+        String ua = null;
+        if (android.os.Build.VERSION.SDK_INT >= 17) {
+            try {
+                ua = view.getSettings().getUserAgentString();
+            } catch (Exception ignored) {}
+        }
+        return httpGet(view.getContext(), ua, url, label);
+    }
+
+    static String httpGet(android.content.Context ctx, String ua, String url, String label) {
+        java.net.HttpURLConnection conn = null;
+        java.io.InputStream in = null;
+        try {
+            conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(10000);
+            conn.setRequestProperty("Connection", "close");
+            conn.setRequestProperty("Accept-Encoding", "identity");
+            if (ua != null) conn.setRequestProperty("User-Agent", ua);
+            boolean haveCookies = false;
+            try {
+                String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
+                if (cookies != null && cookies.length() > 0) {
+                    conn.setRequestProperty("Cookie", cookies);
+                    haveCookies = true;
+                }
+            } catch (Exception ignored) {}
+            if (!haveCookies) {
+                FileLogger.w(Utils.TAG, label + ": fetch has no cookies yet");
+            }
+            boolean pinned = false;
+            if (conn instanceof javax.net.ssl.HttpsURLConnection) {
+                try {
+                    javax.net.ssl.SSLSocketFactory f = PinnedTrust.forOddmarket(ctx);
+                    if (f != null) {
+                        ((javax.net.ssl.HttpsURLConnection) conn).setSSLSocketFactory(f);
+                        pinned = true;
+                    }
+                } catch (Exception ignored) {}
+            }
+            if (!pinned && url.toLowerCase().startsWith("https://")) {
+                FileLogger.w(Utils.TAG, label + ": fetch without pinned TLS");
+            }
+            conn.connect();
+            int status = conn.getResponseCode();
+            if (status < 200 || status > 299) {
+                FileLogger.w(Utils.TAG, label + ": fetch HTTP " + status);
+                return null;
+            }
+            String encoding = "UTF-8";
+            try {
+                String ct = conn.getContentType();
+                if (ct != null) {
+                    String[] parts = ct.split(";");
+                    for (int i = 1; i < parts.length; i++) {
+                        String p = parts[i].trim();
+                        if (p.length() > 8 && p.substring(0, 8).equalsIgnoreCase("charset=")) {
+                            String cs = p.substring(8).trim();
+                            if (cs.length() > 0) encoding = cs;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+            in = new java.io.BufferedInputStream(conn.getInputStream(), 16384);
+            java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+            byte[] chunk = new byte[16384];
+            int read;
+            while ((read = in.read(chunk)) != -1) {
+                buf.write(chunk, 0, read);
+            }
+            try {
+                java.util.Map<String, java.util.List<String>> headers = conn.getHeaderFields();
+                for (java.util.Map.Entry<String, java.util.List<String>> h : headers.entrySet()) {
+                    if (h.getKey() != null && h.getKey().equalsIgnoreCase("Set-Cookie") && h.getValue() != null) {
+                        android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
+                        for (String c : h.getValue()) {
+                            try {
+                                cm.setCookie(url, c);
+                            } catch (Exception ignored) {}
+                        }
+                        CookieHelper.flush();
+                    }
+                }
+            } catch (Exception ignored) {}
+            FileLogger.w(Utils.TAG, label + ": fetch ok, " + buf.size() + " bytes");
+            try {
+                return buf.toString(encoding);
+            } catch (Exception e) {
+                return buf.toString();
+            }
+        } catch (Exception e) {
+            FileLogger.w(Utils.TAG, label + ": fetch failed: " + e.toString());
+            return null;
+        } finally {
+            try {
+                if (in != null) in.close();
+            } catch (Exception ignored) {}
+            if (conn != null) conn.disconnect();
+        }
     }
 
     public static Cancelable check(final Activity activity, ViewGroup hostView, final Callback callback) {
