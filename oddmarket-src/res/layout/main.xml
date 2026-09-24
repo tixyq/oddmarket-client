@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    android:id="@+id/main_root"
+    android:orientation="vertical"
+    android:fitsSystemWindows="true"
+    android:layout_width="fill_parent"
+    android:layout_height="fill_parent"
+    xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout
+        android:id="@+id/main_header"
+        android:orientation="vertical"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content">
+        <FrameLayout
+            android:id="@+id/banner_container"
+            android:visibility="gone"
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content">
+            <ImageView
+                android:id="@+id/banner_image_back"
+                android:visibility="invisible"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:scaleType="fitCenter"
+                android:adjustViewBounds="true" />
+            <ImageView
+                android:id="@+id/banner_image_front"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:scaleType="fitCenter"
+                android:adjustViewBounds="true" />
+        </FrameLayout>
+        <RelativeLayout
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content">
+            <EditText
+                android:id="@+id/search_box"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/search_hint"
+                android:singleLine="true" />
+            <LinearLayout
+                android:id="@+id/search_clear_container"
+                android:layout_width="40.0dip"
+                android:layout_height="wrap_content"
+                android:layout_alignTop="@id/search_box"
+                android:layout_alignBottom="@id/search_box"
+                android:layout_alignParentRight="true"
+                android:gravity="center"
+                android:visibility="gone"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="@string/desc_search_clear">
+                <TextView
+                    android:textSize="16.0sp"
+                    android:id="@+id/search_clear"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/btn_clear"
+                    android:background="@drawable/list_item_selector"
+                    android:duplicateParentState="true"
+                    android:clickable="false"
+                    android:focusable="false" />
+            </LinearLayout>
+        </RelativeLayout>
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content">
+
+            <Button
+                android:id="@+id/tab_apps"
+                android:layout_width="0.0dip"
+                android:layout_height="wrap_content"
+                android:text="@string/tab_apps"
+                android:textSize="15sp"
+                android:layout_weight="1.0" />
+            <Button
+                android:id="@+id/tab_games"
+                android:layout_width="0.0dip"
+                android:layout_height="wrap_content"
+                android:textSize="15sp"
+                android:text="@string/tab_games"
+                android:layout_weight="1.0" />
+        </LinearLayout>
+    </LinearLayout>
+    <View
+        android:id="@+id/tabs_list_spacer"
+        android:layout_width="fill_parent"
+        android:layout_height="10dp" />
+    <ListView
+        android:id="@+id/app_list"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:cacheColorHint="#00000000"
+        android:dividerHeight="1.0dip" />
+</LinearLayout>

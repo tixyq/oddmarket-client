@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">OddMarket</string>
+    <string name="unknown">Unknown</string>
+
+    <string name="title_details">Details</string>
+    <string name="title_preferences">Preferences</string>
+
+    <string name="signed_in_as">Signed in as %1$s</string>
+    <string name="search_hint">Search...</string>
+    <string name="btn_clear">X</string>
+    <string name="tab_apps">Apps</string>
+    <string name="tab_games">Games</string>
+    <string name="tab_all">All</string>
+
+    <string name="status_app_not_found">App not found</string>
+    <string name="status_couldnt_load">Couldn\'t load</string>
+    <string name="status_loading">Loading...</string>
+    <string name="status_nothing_found">Nothing found</string>
+
+    <string name="page_format">Page %1$d</string>
+
+    <string name="rating_format">Rating %1$s</string>
+
+    <string name="menu_refresh">Refresh</string>
+    <string name="menu_check_updates">Check updates</string>
+    <string name="menu_preferences">Preferences</string>
+    <string name="update_available_message">An update is available, please update the client.</string>
+    <string name="btn_update">Update</string>
+    <string name="menu_login">Log in</string>
+    <string name="menu_register">Register</string>
+    <string name="menu_logout">Log out</string>
+    <string name="menu_delete_account">Delete account</string>
+    <string name="delete_account_confirm_title">Delete account?</string>
+    <string name="delete_account_confirm_message">This permanently deletes your account. This cannot be undone. Reviews and ratings you\'ve left will stay.</string>
+    <string name="btn_delete">Delete</string>
+    <string name="btn_cancel">Cancel</string>
+    <string name="toast_account_deleted">Account deleted</string>
+    <string name="toast_account_delete_failed">Couldn\'t delete account, please try again</string>
+
+    <string name="menu_share">Share</string>
+    <string name="share_chooser_title">Share via...</string>
+    <string name="menu_uninstall">Uninstall</string>
+    <string name="toast_app_not_installed">App is not installed</string>
+    <string name="toast_cannot_uninstall_app">Cannot uninstall application</string>
+    <string name="toast_root_install_success">Installed</string>
+    <string name="toast_root_update_success">Updated</string>
+    <string name="toast_root_uninstall_success">Uninstalled</string>
+    <string name="toast_root_access_granted">Root access granted</string>
+    <string name="toast_root_access_denied">Root access not granted</string>
+
+    <string name="btn_state_open">Open</string>
+    <string name="btn_state_download">Download</string>
+    <string name="btn_state_update">Update</string>
+    <string name="btn_state_install">Install</string>
+
+    <string name="toast_cannot_open_app">Cannot open application</string>
+    <string name="toast_browser_not_found">Browser not found</string>
+    <string name="toast_sdcard_required">SD Card is required to download!</string>
+    <string name="toast_permission_denied_download">Permission denied. Cannot download APK.</string>
+    <string name="toast_install_failed_not_found">Installation failed: APK not found.</string>
+    <string name="toast_autoinstall_blocked">Auto-install blocked. APK saved in Download folder.</string>
+    <string name="toast_download_error_format">Download error: %1$s</string>
+    <string name="downloading_format">Downloading %1$s...</string>
+
+    <string name="desc_search_clear">Clear search</string>
+    <string name="desc_page_prev">Previous page</string>
+    <string name="desc_page_next">Next page</string>
+    <string name="desc_icon_option_format">App icon option %1$d</string>
+    <string name="desc_selected_suffix">, selected</string>
+
+    <string name="toast_restart_to_apply">Restart the application to apply the settings</string>
+    <string name="toast_no_browser_found">No browser found</string>
+    <string name="settings_rus_fix_label">Russian URL fix</string>
+    <string name="settings_legacy_download_label">Legacy Download</string>
+    <string name="settings_send_log_label">Send log</string>
+    <string name="settings_request_root_label">Request root access</string>
+    <string name="toast_no_log_file">No log file yet</string>
+    <string name="toast_no_email_app_found">No app found to send the log</string>
+    <string name="settings_disclaimer">Oddmarket is a retro app and game store for old Android devices. All content is provided for informational purposes only. The administration is not responsible for third-party software.</string>
+    <string name="settings_telegram_label">Telegram community – </string>
+    <string name="settings_telegram_link">t.me/daom38</string>
+    <string name="settings_admin_label">Administration – </string>
+    <string name="settings_admin_link">t.me/tixyq</string>
+
+    <string name="settings_caption_general">General</string>
+    <string name="settings_caption_language">Language</string>
+    <string name="settings_caption_theme">Theme</string>
+    <string name="settings_caption_icon">App icon</string>
+    <string name="settings_caption_information">Information</string>
+    <string name="details_caption_screenshots">Screenshots</string>
+    <string name="details_caption_description">Description</string>
+
+    <string name="min_android_format">Android %1$s</string>
+
+    <string name="category_communication">Communication</string>
+    <string name="category_entertainment">Entertainment</string>
+    <string name="category_finance">Finance</string>
+    <string name="category_lifestyle">Lifestyle</string>
+    <string name="category_multimedia">Multimedia</string>
+    <string name="category_news_weather">News &amp; Weather</string>
+    <string name="category_productivity">Productivity</string>
+    <string name="category_reference">Reference</string>
+    <string name="category_shopping">Shopping</string>
+    <string name="category_social">Social</string>
+    <string name="category_tools">Tools</string>
+    <string name="category_travel">Travel</string>
+
+    <string name="category_arcade">Arcade</string>
+    <string name="category_brain_puzzle">Brain &amp; Puzzle</string>
+    <string name="category_cards_casino">Cards &amp; Casino</string>
+    <string name="category_casual">Casual</string>
+
+    <string name="settings_lang_ru">Ru</string>
+    <string name="settings_lang_en">Eng</string>
+
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+
+    <string name="widget_title">New Apps</string>
+    <string name="widget_error">Couldn\'t load</string>
+</resources>

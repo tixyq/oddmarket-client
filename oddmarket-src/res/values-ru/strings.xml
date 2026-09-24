@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">OddMarket</string>
+    <string name="unknown">Неизвестно</string>
+
+    <string name="title_details">Подробности</string>
+    <string name="title_preferences">Настройки</string>
+
+    <string name="signed_in_as">Вы вошли как %1$s</string>
+    <string name="search_hint">Поиск...</string>
+    <string name="btn_clear">X</string>
+    <string name="tab_apps">Приложения</string>
+    <string name="tab_games">Игры</string>
+    <string name="tab_all">Все</string>
+
+    <string name="status_app_not_found">Приложение не найдено</string>
+    <string name="status_couldnt_load">Не удалось загрузить</string>
+    <string name="status_loading">Загрузка...</string>
+    <string name="status_nothing_found">Ничего не найдено</string>
+
+    <string name="page_format">Страница %1$d</string>
+
+    <string name="rating_format">Оценка %1$s</string>
+
+    <string name="menu_refresh">Обновить список</string>
+    <string name="menu_check_updates">Проверить обновления</string>
+    <string name="menu_preferences">Настройки</string>
+    <string name="update_available_message">Доступно обновление, пожалуйста, обновите клиент.</string>
+    <string name="btn_update">Обновить</string>
+    <string name="menu_login">Войти</string>
+    <string name="menu_register">Регистрация</string>
+    <string name="menu_logout">Выйти</string>
+    <string name="menu_delete_account">Удалить аккаунт</string>
+    <string name="delete_account_confirm_title">Удалить аккаунт?</string>
+    <string name="delete_account_confirm_message">Аккаунт будет удалён безвозвратно. Отменить это будет нельзя. Ваши отзывы и оценки при этом останутся.</string>
+    <string name="btn_delete">Удалить</string>
+    <string name="btn_cancel">Отмена</string>
+    <string name="toast_account_deleted">Аккаунт удалён</string>
+    <string name="toast_account_delete_failed">Не удалось удалить аккаунт, попробуйте ещё раз</string>
+
+    <string name="menu_share">Поделиться</string>
+    <string name="share_chooser_title">Поделиться через...</string>
+    <string name="menu_uninstall">Удалить приложение</string>
+    <string name="toast_app_not_installed">Приложение не установлено</string>
+    <string name="toast_cannot_uninstall_app">Не удалось удалить приложение</string>
+    <string name="toast_root_install_success">Установлено</string>
+    <string name="toast_root_update_success">Обновлено</string>
+    <string name="toast_root_uninstall_success">Удалено</string>
+    <string name="toast_root_access_granted">Root-доступ получен</string>
+    <string name="toast_root_access_denied">Root-доступ не предоставлен</string>
+
+    <string name="btn_state_open">Открыть</string>
+    <string name="btn_state_download">Скачать</string>
+    <string name="btn_state_update">Обновить</string>
+    <string name="btn_state_install">Установить</string>
+
+    <string name="toast_cannot_open_app">Не удалось открыть приложение</string>
+    <string name="toast_browser_not_found">Браузер не найден</string>
+    <string name="toast_sdcard_required">Для загрузки требуется SD-карта!</string>
+    <string name="toast_permission_denied_download">Доступ запрещён. Невозможно загрузить APK.</string>
+    <string name="toast_install_failed_not_found">Установка не удалась: APK не найден.</string>
+    <string name="toast_autoinstall_blocked">Автоустановка заблокирована. APK сохранён в папке Download.</string>
+    <string name="toast_download_error_format">Ошибка загрузки: %1$s</string>
+    <string name="downloading_format">Загрузка %1$s...</string>
+
+    <string name="desc_search_clear">Очистить поиск</string>
+    <string name="desc_page_prev">Предыдущая страница</string>
+    <string name="desc_page_next">Следующая страница</string>
+    <string name="desc_icon_option_format">Вариант значка приложения %1$d</string>
+    <string name="desc_selected_suffix">, выбрано</string>
+
+    <string name="toast_restart_to_apply">Перезапустите приложение, чтобы применить настройки</string>
+    <string name="toast_no_browser_found">Браузер не найден</string>
+    <string name="settings_rus_fix_label">Фикс российских ссылок</string>
+    <string name="settings_legacy_download_label">Устаревшая загрузка</string>
+    <string name="settings_send_log_label">Отправить лог</string>
+    <string name="settings_request_root_label">Запросить root-доступ</string>
+    <string name="toast_no_log_file">Файл лога отсутствует</string>
+    <string name="toast_no_email_app_found">Не найдено приложение для отправки лога</string>
+    <string name="settings_disclaimer">Oddmarket – это ретро магазин приложений и игр под старые Android устройства. Весь контент предоставлен исключительно в ознакомительных целях. Администрация не несет ответственности за стороннее программное обеспечение.</string>
+    <string name="settings_telegram_label">Телеграм сообщество – </string>
+    <string name="settings_telegram_link">t.me/daom38</string>
+    <string name="settings_admin_label">Администрация – </string>
+    <string name="settings_admin_link">t.me/tixyq</string>
+
+    <string name="settings_caption_general">Общие</string>
+    <string name="settings_caption_language">Язык</string>
+    <string name="settings_caption_theme">Тема</string>
+    <string name="settings_caption_icon">Иконка приложения</string>
+    <string name="settings_caption_information">Информация</string>
+    <string name="details_caption_screenshots">Скриншоты</string>
+    <string name="details_caption_description">Описание</string>
+
+    <string name="min_android_format">Android %1$s</string>
+
+    <string name="category_communication">Общение</string>
+    <string name="category_entertainment">Развлечения</string>
+    <string name="category_finance">Финансы</string>
+    <string name="category_lifestyle">Стиль жизни</string>
+    <string name="category_multimedia">Мультимедиа</string>
+    <string name="category_news_weather">Новости и погода</string>
+    <string name="category_productivity">Продуктивность</string>
+    <string name="category_reference">Справочники</string>
+    <string name="category_shopping">Покупки</string>
+    <string name="category_social">Социальные сети</string>
+    <string name="category_tools">Инструменты</string>
+    <string name="category_travel">Путешествия</string>
+
+    <string name="category_arcade">Аркады</string>
+    <string name="category_brain_puzzle">Головоломки</string>
+    <string name="category_cards_casino">Карты и казино</string>
+    <string name="category_casual">Казуальные</string>
+
+    <string name="settings_lang_ru">Ru</string>
+    <string name="settings_lang_en">Eng</string>
+
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+
+    <string name="widget_title">Новые приложения</string>
+    <string name="widget_error">Не удалось загрузить</string>
+</resources>

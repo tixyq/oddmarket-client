@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="fill_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:id="@+id/item_row_items_container"
+        android:orientation="horizontal"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content">
+
+        <include
+            android:id="@+id/item_row_left"
+            layout="@layout/list_item"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1.0"
+            android:layout_marginRight="12dp" />
+
+        <include
+            android:id="@+id/item_row_right"
+            layout="@layout/list_item"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1.0"
+            android:layout_marginLeft="12dp" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/item_row_divider_container"
+        android:orientation="horizontal"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content">
+
+        <View
+            android:id="@+id/item_row_divider_left"
+            android:layout_width="0dp"
+            android:layout_height="1px"
+            android:layout_weight="1.0"
+            android:layout_marginRight="12dp"
+            />
+
+        <View
+            android:id="@+id/item_row_divider_right"
+            android:layout_width="0dp"
+            android:layout_height="1px"
+            android:layout_weight="1.0"
+            android:layout_marginLeft="12dp"
+            />
+
+    </LinearLayout>
+
+</LinearLayout>
