@@ -1,5 +1,4 @@
 package com.oddmarket;
-// Tracks own downloaded files.
 
 import android.content.Context;
 import android.content.SharedPreferences;

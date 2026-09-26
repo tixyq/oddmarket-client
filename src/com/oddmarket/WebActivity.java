@@ -1,5 +1,4 @@
 package com.oddmarket;
-// In-app browser.
 
 import android.app.Activity;
 import android.content.Context;
@@ -15,7 +14,6 @@ import android.webkit.WebViewClient;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.Toast;
-import android.util.Log;
 
 public class WebActivity extends Activity {
 
@@ -32,6 +30,7 @@ public class WebActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         FileLogger.init(this);
+        FileLogger.i(Utils.TAG, "WebActivity.onCreate url=" + getIntent().getStringExtra("url"));
 
         LinearLayout rootLayout = new LinearLayout(this);
         rootLayout.setOrientation(LinearLayout.VERTICAL);
@@ -53,19 +52,27 @@ public class WebActivity extends Activity {
                 ViewGroup.LayoutParams.FILL_PARENT, 0, 1.0f);
         webView.setLayoutParams(webParams);
 
-        webView.getSettings().setJavaScriptEnabled(true);
-        webView.getSettings().setSupportZoom(false);
-        webView.getSettings().setBuiltInZoomControls(false);
+        Utils.configureWebViewCompat(webView);
         webView.setBackgroundColor(Theme.windowBackground());
+        CookieHelper.enableCookiesForWebView(webView);
 
+        final Object bareUrlCheckBridge = new Object() {
+            @android.webkit.JavascriptInterface
+            public void onResult(final boolean stillChallengePage) {
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        if (!stillChallengePage) {
+                            finishAfterLogin();
+                        }
+                    }
+                });
+            }
+        };
         try {
-            java.lang.reflect.Method m = android.view.View.class.getMethod("setScrollbarFadingEnabled", boolean.class);
-            m.invoke(webView, false);
+            webView.addJavascriptInterface(bareUrlCheckBridge, BARE_URL_CHECK_BRIDGE_NAME);
         } catch (Exception e) {
-            Log.d(Utils.TAG, "setScrollbarFadingEnabled not available", e);
+            FileLogger.w(Utils.TAG, "WebActivity: could not register bare-url bridge", e);
         }
-
-        webView.setVerticalScrollBarEnabled(true);
 
         webView.setWebChromeClient(new WebChromeClient() {
 
@@ -104,11 +111,6 @@ public class WebActivity extends Activity {
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                if (isBareDebugInterfaceUrl(url)) {
-                    finishAfterDebugRedirect();
-                    return true;
-                }
-
                 if (url != null) {
                     if (url.startsWith("web://")) {
                         try {
@@ -136,12 +138,6 @@ public class WebActivity extends Activity {
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
 
-                if (isBareDebugInterfaceUrl(url)) {
-                    view.stopLoading();
-                    finishAfterDebugRedirect();
-                    return;
-                }
-
                 currentUrl = url;
                 progressBar.setProgress(0);
                 progressBar.setVisibility(View.VISIBLE);
@@ -150,6 +146,25 @@ public class WebActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+
+                CookieHelper.flush();
+
+                if (isBareCompletionUrl(url)) {
+
+                    view.loadUrl("javascript:(function(){try{var h=document.documentElement?document.documentElement.outerHTML:'';"
+                            + BARE_URL_CHECK_BRIDGE_NAME + ".onResult(h.indexOf('toNumbers')!==-1);}catch(e){"
+                            + BARE_URL_CHECK_BRIDGE_NAME + ".onResult(true);}})()");
+                }
+            }
+
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                FileLogger.w(Utils.TAG, "WebActivity: onReceivedError " + errorCode + " " + description + " url=" + failingUrl);
+                Toast.makeText(WebActivity.this, description, Toast.LENGTH_SHORT).show();
+            }
+
+            public void onReceivedSslError(WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
+                handler.proceed();
             }
         });
 
@@ -158,7 +173,9 @@ public class WebActivity extends Activity {
         Utils.enableActionBarUpButton(this);
     }
 
-    private static final String[] KNOWN_ACTIONS = {"log", "reg", "reviews", "me"};
+    private static final String[] KNOWN_ACTIONS = {"log", "reg", "reviews", "me", "delacc", "rating"};
+
+    private static final String BARE_URL_CHECK_BRIDGE_NAME = "OddMarketBareUrlCheck";
 
     private static boolean hasQueryParam(Uri uri, String name) {
         String query = uri.getQuery();
@@ -172,7 +189,7 @@ public class WebActivity extends Activity {
         return false;
     }
 
-    private static boolean isBareDebugInterfaceUrl(String url) {
+    private static boolean isBareCompletionUrl(String url) {
         if (url == null) return false;
         try {
             Uri parsed = Uri.parse(url);
@@ -189,8 +206,8 @@ public class WebActivity extends Activity {
         }
     }
 
-    private void finishAfterDebugRedirect() {
-        FileLogger.w(Utils.TAG, "Blocked navigation to c.php debug interface, closing screen");
+    private void finishAfterLogin() {
+        FileLogger.i(Utils.TAG, "WebActivity: login flow completed, closing");
         if (!isFinishing()) {
             finish();
         }

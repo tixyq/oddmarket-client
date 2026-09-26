@@ -1,5 +1,4 @@
 package com.oddmarket;
-// Serves downloaded APKs and log file.
 
 import android.content.ContentProvider;
 import android.content.ContentValues;

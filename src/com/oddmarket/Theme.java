@@ -1,5 +1,4 @@
 package com.oddmarket;
-// Colors and fonts.
 
 import android.content.Context;
 import android.content.SharedPreferences;

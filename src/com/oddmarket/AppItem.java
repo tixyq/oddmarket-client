@@ -1,5 +1,4 @@
 package com.oddmarket;
-// One catalog app entry.
 
 import android.content.Context;
 

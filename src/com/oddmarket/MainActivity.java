@@ -1,5 +1,4 @@
 package com.oddmarket;
-// App list, search and tabs.
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -89,9 +88,16 @@ public class MainActivity extends Activity {
 
     private boolean isDestroyed = false;
 
+    private static final long ACCOUNT_CHECK_THROTTLE_MS = 30000;
+    private static final long RATINGS_THROTTLE_MS = 600000;
+    private long lastAccountCheckMs = 0;
+    private long lastRatingsOkMs = 0;
+
     private AccountManager.Cancelable pendingAccountCheck;
     private AccountManager.Cancelable pendingRatingsFetch;
     private AccountManager.Cancelable pendingDeleteAccount;
+
+    private boolean forceAccountCheckOnNextResume = false;
 
     private android.os.Handler searchHandler = new android.os.Handler();
     private Runnable searchRunnable = new Runnable() {
@@ -179,8 +185,10 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
 
         FileLogger.init(this);
+        FileLogger.i(Utils.TAG, "MainActivity.onCreate start, intent=" + getIntent());
 
         Utils.forceShowOverflowMenu(this);
+        Utils.hideActionBarIcon(this);
 
         getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN | android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         setTitle(R.string.app_name);
@@ -206,13 +214,13 @@ public class MainActivity extends Activity {
 
         loadData(true);
         loadBanners();
-        fetchRatings();
 
         listView.post(new Runnable() {
             public void run() {
                 listView.requestFocus();
             }
         });
+        FileLogger.i(Utils.TAG, "MainActivity.onCreate done");
     }
 
     private void initPreferences() {
@@ -529,6 +537,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        FileLogger.i(Utils.TAG, "MainActivity.onResume");
         checkForClientUpdate();
 
         boolean currentRusFixState = isRussianUrlFixActive(this);
@@ -539,10 +548,14 @@ public class MainActivity extends Activity {
             loadBanners();
         }
 
-        refreshAccountStatus();
+        refreshAccountStatus(forceAccountCheckOnNextResume);
+        forceAccountCheckOnNextResume = false;
     }
 
-    private void refreshAccountStatus() {
+    private void refreshAccountStatus(final boolean force) {
+        if (!force && System.currentTimeMillis() - lastAccountCheckMs < ACCOUNT_CHECK_THROTTLE_MS) {
+            return;
+        }
         if (pendingAccountCheck != null) {
             pendingAccountCheck.cancel();
             pendingAccountCheck = null;
@@ -550,6 +563,7 @@ public class MainActivity extends Activity {
         pendingAccountCheck = AccountManager.check(this, rootLayout, new AccountManager.Callback() {
             public void onResult(boolean loggedIn, String nickname) {
                 pendingAccountCheck = null;
+                lastAccountCheckMs = System.currentTimeMillis();
                 if (isDestroyed) return;
                 Utils.invalidateOptionsMenuIfSupported(MainActivity.this);
                 updateAccountBadge(nickname);
@@ -588,10 +602,12 @@ public class MainActivity extends Activity {
         currentPage = 1;
         loadData(true);
         loadBanners();
-        refreshAccountStatus();
+        refreshAccountStatus(true);
     }
 
     private void openWebScreen(String url) {
+
+        forceAccountCheckOnNextResume = true;
         Intent intent = new Intent(this, WebActivity.class);
         intent.putExtra("url", url);
         startActivity(intent);
@@ -599,6 +615,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
+        FileLogger.i(Utils.TAG, "MainActivity.onPause");
         searchHandler.removeCallbacks(searchRunnable);
         bannerHandler.removeCallbacks(bannerRunnable);
         super.onPause();
@@ -606,6 +623,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        FileLogger.i(Utils.TAG, "MainActivity.onDestroy");
         isDestroyed = true;
         searchHandler.removeCallbacks(searchRunnable);
         bannerHandler.removeCallbacks(bannerRunnable);
@@ -877,10 +895,7 @@ public class MainActivity extends Activity {
 
     public static String fixUrl(Context context, String u) {
         u = applyRussianUrlFix(context, u);
-        if (u != null && u.toLowerCase().startsWith("https://")) {
-            return "http://" + u.substring(8);
-        }
-        return u;
+        return Utils.httpsToHttp(u);
     }
 
     public static String fixApkUrl(Context context, String u) {
@@ -914,6 +929,7 @@ public class MainActivity extends Activity {
 
     public static final ExecutorService imageExecutor = Executors.newFixedThreadPool(6);
 
+    // Image download with one retry.
     private static Bitmap downloadAndDecodeBitmapWithRetry(String url, int maxDimensionPx) {
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
@@ -933,6 +949,7 @@ public class MainActivity extends Activity {
         return null;
     }
 
+    // Cached async icon load with recycled-view guard.
     public static void loadIcon(String rawUrl, final ImageView img) {
         if (rawUrl == null || rawUrl.length() == 0) {
             img.setImageResource(R.drawable.ic_pic);
@@ -1030,6 +1047,7 @@ public class MainActivity extends Activity {
     }
 
     private void loadBanners() {
+        FileLogger.i(Utils.TAG, "loadBanners: start");
         new Thread(new Runnable() {
             public void run() {
                 try {
@@ -1037,6 +1055,7 @@ public class MainActivity extends Activity {
                     String jsonStr = Utils.downloadString(bannerListUrl);
                     JSONObject jsonObj = new JSONObject(jsonStr);
                     final org.json.JSONArray array = jsonObj.optJSONArray("banners");
+                    FileLogger.i(Utils.TAG, "loadBanners: got " + (array != null ? array.length() : 0) + " banner(s)");
                     if (array != null && array.length() > 0) {
                         runOnUiThread(new Runnable() {
                             public void run() {
@@ -1113,6 +1132,7 @@ public class MainActivity extends Activity {
         bannerHandler.postDelayed(bannerRunnable, delay);
     }
 
+    // Paged catalog load, stale responses ignored.
     private void loadData(final boolean scrollToTop) {
         final int myRequest = ++requestSeq;
         isLoading = true;
@@ -1139,19 +1159,22 @@ public class MainActivity extends Activity {
             public void run() {
                 try {
                     String urlStr = buildListUrl(pageSnapshot, tabSnapshot, querySnapshot);
+                    FileLogger.i(Utils.TAG, "loadData: fetching " + urlStr);
                     String jsonStr = Utils.downloadString(urlStr);
                     JSONObject response = new JSONObject(jsonStr);
 
                     final boolean moreFlag = response.optBoolean("hasMore", false);
                     final boolean prevFlag = response.optBoolean("hasPrev", false);
                     final List<AppItem> resultList = parseAppItems(response);
+                    FileLogger.i(Utils.TAG, "loadData: got " + resultList.size() + " item(s), page=" + pageSnapshot + " tab=" + tabSnapshot);
 
                     runOnUiThread(new Runnable() {
                         public void run() {
                             applyLoadedData(myRequest, pageSnapshot, tabSnapshot, querySnapshot, resultList, moreFlag, prevFlag, scrollToTop);
                         }
                     });
-                } catch (Exception e) {
+                } catch (final Exception e) {
+                    FileLogger.w(Utils.TAG, "loadData: failed for page=" + pageSnapshot + " tab=" + tabSnapshot, e);
                     runOnUiThread(new Runnable() {
                         public void run() {
                             applyLoadError(myRequest);
@@ -1209,6 +1232,7 @@ public class MainActivity extends Activity {
         return resultList;
     }
 
+    // Applies server page to list and pager.
     private void applyLoadedData(int myRequest, int pageSnapshot, String tabSnapshot, String querySnapshot, List<AppItem> resultList, boolean moreFlag, boolean prevFlag, final boolean scrollToTop) {
         if (myRequest != requestSeq) return;
         isLoading = false;
@@ -1287,6 +1311,9 @@ public class MainActivity extends Activity {
     }
 
     private void fetchRatings() {
+        if (System.currentTimeMillis() - lastRatingsOkMs < RATINGS_THROTTLE_MS) {
+            return;
+        }
         if (pendingRatingsFetch != null) {
             pendingRatingsFetch.cancel();
             pendingRatingsFetch = null;
@@ -1296,6 +1323,7 @@ public class MainActivity extends Activity {
                 pendingRatingsFetch = null;
                 if (isDestroyed) return;
                 if (ratings == null) return;
+                lastRatingsOkMs = System.currentTimeMillis();
                 ratingsByPkg.clear();
                 ratingsByPkg.putAll(ratings);
                 if (adapter != null) adapter.notifyDataSetChanged();
@@ -1595,7 +1623,7 @@ public class MainActivity extends Activity {
             currentPage = 1;
             loadData(true);
             loadBanners();
-            refreshAccountStatus();
+            refreshAccountStatus(true);
             return true;
         } else if (item.getItemId() == MENU_ID_CHECK_UPDATES) {
             fetchSpecificApp("com.oddmarket");

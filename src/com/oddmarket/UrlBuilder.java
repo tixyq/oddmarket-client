@@ -1,12 +1,11 @@
 package com.oddmarket;
-// Backend URLs.
 
 import android.content.Context;
 import android.net.Uri;
 
 public final class UrlBuilder {
 
-    public static final String BASE_URL = "https://oddmarket.ct.ws/c.php";
+    public static final String BASE_URL = "http://oddmarket.ct.ws/c.php";
 
     private UrlBuilder() {}
 

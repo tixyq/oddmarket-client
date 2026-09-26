@@ -1,5 +1,4 @@
 package com.oddmarket;
-// Settings screen.
 
 import android.app.Activity;
 import android.content.ComponentName;
@@ -52,6 +51,7 @@ public class SettingsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         FileLogger.init(this);
+        FileLogger.i(Utils.TAG, "SettingsActivity.onCreate");
         setTitle(R.string.title_preferences);
         setContentView(R.layout.settings);
         Theme.applyFonts(findViewById(R.id.settings_root));
@@ -363,24 +363,7 @@ public class SettingsActivity extends Activity {
             Toast.makeText(this, R.string.toast_no_log_file, Toast.LENGTH_SHORT).show();
             return;
         }
-
-        try {
-            Uri logUri;
-            if (android.os.Build.VERSION.SDK_INT >= 24) {
-                logUri = Uri.parse("content://com.oddmarket.provider/log");
-            } else {
-                logUri = Uri.fromFile(logFile);
-            }
-
-            Intent sendIntent = new Intent(Intent.ACTION_SEND);
-            sendIntent.setType("text/plain");
-            sendIntent.putExtra(Intent.EXTRA_SUBJECT, "OddMarket log");
-            sendIntent.putExtra(Intent.EXTRA_STREAM, logUri);
-            sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-
-            startActivity(Intent.createChooser(sendIntent, getString(R.string.settings_send_log_label)));
-        } catch (Exception e) {
-            FileLogger.w(Utils.TAG, "Failed to launch log share intent", e);
+        if (!Utils.shareLogFile(this)) {
             Toast.makeText(this, R.string.toast_no_email_app_found, Toast.LENGTH_SHORT).show();
         }
     }

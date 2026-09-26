@@ -1,5 +1,4 @@
 package com.oddmarket;
-// Common helpers.
 
 import android.app.Activity;
 import android.content.Context;
@@ -14,12 +13,12 @@ import android.net.Uri;
 import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
 import android.widget.TextView;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -60,6 +59,13 @@ public final class Utils {
     public static String formatMinAndroid(Context context, String minAndroidVersion) {
         String version = minAndroidVersion == null ? "" : minAndroidVersion;
         return context.getString(R.string.min_android_format, version);
+    }
+
+    public static String httpsToHttp(String url) {
+        if (url != null && url.toLowerCase().startsWith("https://")) {
+            return "http://" + url.substring(8);
+        }
+        return url;
     }
 
     public static boolean isVersionOlder(String installed, String site) {
@@ -157,19 +163,131 @@ public final class Utils {
         return false;
     }
 
-    public static void enableActionBarUpButton(Activity activity) {
-        if (android.os.Build.VERSION.SDK_INT >= 11) {
+    public static void configureWebViewCompat(WebView webView) {
+        if (webView == null) return;
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        setDomStorageEnabledCompat(settings);
+        setDatabaseEnabledCompat(webView);
+        setAppCacheEnabledCompat(webView);
+        disableZoom(webView);
+
+        if (android.os.Build.VERSION.SDK_INT >= 21) {
             try {
-                Method getActionBarMethod = Activity.class.getMethod("getActionBar");
-                Object actionBar = getActionBarMethod.invoke(activity);
-                if (actionBar != null) {
-                    Method setHomeMethod = actionBar.getClass().getMethod("setDisplayHomeAsUpEnabled", boolean.class);
-                    setHomeMethod.invoke(actionBar, true);
-                }
+                java.lang.reflect.Method m = WebSettings.class.getMethod("setMixedContentMode", int.class);
+                java.lang.reflect.Field f = WebSettings.class.getField("MIXED_CONTENT_ALWAYS_ALLOW");
+                m.invoke(settings, f.getInt(null));
             } catch (Exception e) {
-                FileLogger.w(TAG, "Could not enable action bar Up button", e);
+                FileLogger.w(TAG, "Could not allow WebView mixed content", e);
             }
         }
+    }
+
+    private static void setDomStorageEnabledCompat(WebSettings settings) {
+        try {
+            Method m = WebSettings.class.getMethod("setDomStorageEnabled", boolean.class);
+            m.invoke(settings, true);
+        } catch (Exception e) {
+            FileLogger.w(TAG, "DOM storage not available", e);
+        }
+    }
+
+    private static void setDatabaseEnabledCompat(WebView webView) {
+        try {
+            WebSettings settings = webView.getSettings();
+            Method setEnabled = WebSettings.class.getMethod("setDatabaseEnabled", boolean.class);
+            Method setPath = WebSettings.class.getMethod("setDatabasePath", String.class);
+            java.io.File dir = webView.getContext().getDir("webview_dbs", 0);
+            setPath.invoke(settings, dir.getAbsolutePath());
+            setEnabled.invoke(settings, true);
+        } catch (Exception e) {
+            FileLogger.w(TAG, "WebView database storage not available", e);
+        }
+    }
+
+    private static void setAppCacheEnabledCompat(WebView webView) {
+        try {
+            WebSettings settings = webView.getSettings();
+            Method setPath = WebSettings.class.getMethod("setAppCachePath", String.class);
+            Method setMax = WebSettings.class.getMethod("setAppCacheMaxSize", long.class);
+            Method setEnabled = WebSettings.class.getMethod("setAppCacheEnabled", boolean.class);
+            java.io.File dir = new java.io.File(webView.getContext().getCacheDir(), "webview_cache");
+            dir.mkdirs();
+            setPath.invoke(settings, dir.getAbsolutePath());
+            setMax.invoke(settings, 8L * 1024L * 1024L);
+            setEnabled.invoke(settings, true);
+        } catch (Exception e) {
+            FileLogger.w(TAG, "WebView app cache not available", e);
+        }
+    }
+
+    public static void disableZoom(WebView webView) {
+        if (webView == null) return;
+        WebSettings settings = webView.getSettings();
+        settings.setSupportZoom(false);
+        settings.setBuiltInZoomControls(false);
+
+        if (android.os.Build.VERSION.SDK_INT >= 11) {
+            try {
+                Method m = WebSettings.class.getMethod("setDisplayZoomControls", boolean.class);
+                m.invoke(settings, false);
+            } catch (Exception e) {
+                FileLogger.w(TAG, "Could not disable WebView display zoom controls", e);
+            }
+        }
+    }
+
+    private interface ActionBarUse {
+        void run(Object actionBar) throws Exception;
+    }
+
+    private static void withActionBar(Activity activity, String failureLogMessage, ActionBarUse use) {
+        if (android.os.Build.VERSION.SDK_INT < 11) return;
+        try {
+            Method getActionBarMethod = Activity.class.getMethod("getActionBar");
+            Object actionBar = getActionBarMethod.invoke(activity);
+            if (actionBar != null) {
+                use.run(actionBar);
+            }
+        } catch (Exception e) {
+            FileLogger.w(TAG, failureLogMessage, e);
+        }
+    }
+
+    public static void enableActionBarUpButton(Activity activity) {
+        withActionBar(activity, "Could not enable action bar Up button", new ActionBarUse() {
+            public void run(Object actionBar) throws Exception {
+                Method setHomeMethod = actionBar.getClass().getMethod("setDisplayHomeAsUpEnabled", boolean.class);
+                setHomeMethod.invoke(actionBar, true);
+            }
+        });
+        hideActionBarIcon(activity);
+    }
+
+    public static void hideActionBarIcon(Activity activity) {
+        withActionBar(activity, "Could not hide action bar icon", new ActionBarUse() {
+            public void run(Object actionBar) throws Exception {
+                try {
+                    Method setDisplayShowHome = actionBar.getClass()
+                            .getMethod("setDisplayShowHomeEnabled", boolean.class);
+                    setDisplayShowHome.invoke(actionBar, false);
+                } catch (Exception e) {
+                    FileLogger.w(TAG, "Could not disable action bar home icon", e);
+                }
+                try {
+                    Method setIcon = actionBar.getClass().getMethod("setIcon", int.class);
+                    setIcon.invoke(actionBar, android.R.color.transparent);
+                } catch (Exception e) {
+                    FileLogger.w(TAG, "Could not clear action bar icon", e);
+                }
+                try {
+                    Method setLogo = actionBar.getClass().getMethod("setLogo", int.class);
+                    setLogo.invoke(actionBar, android.R.color.transparent);
+                } catch (Exception e) {
+                    FileLogger.w(TAG, "Could not clear action bar logo", e);
+                }
+            }
+        });
     }
 
     public static void invalidateOptionsMenuIfSupported(Activity activity) {
@@ -283,31 +401,16 @@ public final class Utils {
         return granted;
     }
 
+    // Tests su access without prompting.
     private static boolean probeRoot() {
-        Process process = null;
-        java.io.DataOutputStream os = null;
-        try {
-            process = Runtime.getRuntime().exec("su");
-            os = new java.io.DataOutputStream(process.getOutputStream());
-            os.writeBytes("id\n");
-            os.writeBytes("exit\n");
-            os.flush();
-            return process.waitFor() == 0;
-        } catch (Exception e) {
-            return false;
-        } finally {
-            try {
-                if (os != null) os.close();
-            } catch (Exception ignored) {}
-            if (process != null) {
-                try {
-                    process.destroy();
-                } catch (Exception ignored) {}
-            }
-        }
+        return runAsRoot("id", false);
     }
 
     private static boolean runAsRoot(String command) {
+        return runAsRoot(command, true);
+    }
+
+    private static boolean runAsRoot(String command, boolean logFailure) {
         Process process = null;
         java.io.DataOutputStream os = null;
         try {
@@ -318,7 +421,7 @@ public final class Utils {
             os.flush();
             return process.waitFor() == 0;
         } catch (Exception e) {
-            FileLogger.w(TAG, "Root command failed: " + command, e);
+            if (logFailure) FileLogger.w(TAG, "Root command failed: " + command, e);
             return false;
         } finally {
             try {
@@ -335,6 +438,42 @@ public final class Utils {
     private static String shellQuote(String value) {
         if (value == null) value = "";
         return "'" + value.replace("'", "'\\''") + "'";
+    }
+
+    public static boolean shareLogFile(Context context) {
+        File logFile = FileLogger.getLogFile();
+        if (context == null || logFile == null || !logFile.exists() || logFile.length() == 0) {
+            return false;
+        }
+        try {
+            Uri logUri;
+            if (android.os.Build.VERSION.SDK_INT >= 24) {
+                logUri = Uri.parse("content://com.oddmarket.provider/log");
+            } else {
+                logUri = Uri.fromFile(logFile);
+            }
+
+            Intent sendIntent = new Intent(Intent.ACTION_SEND);
+            sendIntent.setType("text/plain");
+            sendIntent.putExtra(Intent.EXTRA_SUBJECT, "OddMarket log");
+            sendIntent.putExtra(Intent.EXTRA_STREAM, logUri);
+            sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+            String label;
+            try {
+                label = context.getString(R.string.settings_send_log_label);
+            } catch (Exception e) {
+                label = "Send log";
+            }
+
+            Intent chooser = Intent.createChooser(sendIntent, label);
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(chooser);
+            return true;
+        } catch (Exception e) {
+            FileLogger.w(TAG, "Failed to launch log share intent", e);
+            return false;
+        }
     }
 
     public static boolean isValidPackageName(String pkg) {
@@ -390,37 +529,30 @@ public final class Utils {
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setConnectTimeout(timeoutMillis);
         conn.setReadTimeout(timeoutMillis);
-        BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
-        StringBuilder sb = new StringBuilder();
-        String line;
-        while ((line = r.readLine()) != null) sb.append(line).append("\n");
-        r.close();
-        conn.disconnect();
-        return sb.toString();
+        try {
+            BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+            try {
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = r.readLine()) != null) sb.append(line).append("\n");
+                return sb.toString();
+            } finally {
+                r.close();
+            }
+        } finally {
+
+            conn.disconnect();
+        }
     }
 
     public static String downloadString(String urlStr) throws Exception {
         return downloadString(urlStr, 5000);
     }
 
+    // Downsampled bitmap decode to target size.
     public static Bitmap downloadAndDecodeBitmap(String urlStr, int maxDimensionPx) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
-        conn.setConnectTimeout(5000);
-        conn.setReadTimeout(5000);
-        InputStream in = conn.getInputStream();
-        byte[] data;
-        try {
-            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-            byte[] chunk = new byte[8192];
-            int read;
-            while ((read = in.read(chunk)) != -1) {
-                buffer.write(chunk, 0, read);
-            }
-            data = buffer.toByteArray();
-        } finally {
-            in.close();
-            conn.disconnect();
-        }
+
+        byte[] data = ImageDiskCache.fetch(urlStr, 5000).bytes;
 
         BitmapFactory.Options boundsOpts = new BitmapFactory.Options();
         boundsOpts.inJustDecodeBounds = true;
@@ -486,33 +618,26 @@ public final class Utils {
         return dir;
     }
 
-    public static void setWorldReadable(File file) {
+    private static void setWorldPermission(File file, String methodName, String permissionLabel) {
         try {
-            java.lang.reflect.Method m = File.class.getMethod("setReadable", boolean.class, boolean.class);
+            java.lang.reflect.Method m = File.class.getMethod(methodName, boolean.class, boolean.class);
             m.invoke(file, true, false);
         } catch (Exception e) {
             try {
-                java.lang.reflect.Method m1 = File.class.getMethod("setReadable", boolean.class);
+                java.lang.reflect.Method m1 = File.class.getMethod(methodName, boolean.class);
                 m1.invoke(file, true);
             } catch (Exception e2) {
-
-                FileLogger.w(TAG, "Could not make file world-readable (pre-Gingerbread runtime?)", e2);
+                FileLogger.w(TAG, "Could not make file world-" + permissionLabel + " (pre-Gingerbread runtime?)", e2);
             }
         }
     }
 
+    public static void setWorldReadable(File file) {
+        setWorldPermission(file, "setReadable", "readable");
+    }
+
     public static void setWorldExecutable(File file) {
-        try {
-            java.lang.reflect.Method m = File.class.getMethod("setExecutable", boolean.class, boolean.class);
-            m.invoke(file, true, false);
-        } catch (Exception e) {
-            try {
-                java.lang.reflect.Method m1 = File.class.getMethod("setExecutable", boolean.class);
-                m1.invoke(file, true);
-            } catch (Exception e2) {
-                FileLogger.w(TAG, "Could not make file world-executable (pre-Gingerbread runtime?)", e2);
-            }
-        }
+        setWorldPermission(file, "setExecutable", "executable");
     }
 
     public static boolean isActuallyWritable(File dir) {
@@ -530,6 +655,7 @@ public final class Utils {
         }
     }
 
+    // Shared Download or internal fallback.
     public static File resolveApkDownloadDir(Context context) {
         File externalDir = new File(android.os.Environment.getExternalStorageDirectory(), "Download");
         externalDir.mkdirs();

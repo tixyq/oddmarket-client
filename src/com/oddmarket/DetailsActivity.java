@@ -1,5 +1,4 @@
 package com.oddmarket;
-// App details, download and install.
 
 import android.app.Activity;
 import android.app.ProgressDialog;
@@ -7,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -21,6 +21,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.AdapterView;
@@ -58,7 +59,7 @@ public class DetailsActivity extends Activity {
 
     private AccountManager.Cancelable pendingReviewsAccountCheck;
 
-    private static final int REVIEWS_LOAD_TIMEOUT_MS = 8000;
+    private static final int REVIEWS_LOAD_TIMEOUT_MS = 12000;
     private String siteVersion = "";
     private String downloadUrl = "";
     private String appName = "";
@@ -117,6 +118,7 @@ public class DetailsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         FileLogger.init(this);
+        FileLogger.i(Utils.TAG, "DetailsActivity.onCreate, intent=" + getIntent());
         setTitle(R.string.title_details);
         Utils.forceShowOverflowMenu(this);
 
@@ -146,7 +148,7 @@ public class DetailsActivity extends Activity {
         View headerContainer = originalContentView.findViewById(R.id.details_header_container);
         if (headerContainer != null) headerContainer.setBackgroundColor(Theme.tabRowBackground());
 
-        ScrollView scrollView = new ScrollView(this);
+        ScrollView scrollView = new NoAutoScrollScrollView(this);
         scrollView.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.FILL_PARENT));
         scrollView.setBackgroundColor(Theme.windowBackground());
         scrollView.setFillViewport(true);
@@ -338,9 +340,8 @@ public class DetailsActivity extends Activity {
                         if (isLegacy) {
                             String finalUrl = MainActivity.fixApkUrl(DetailsActivity.this, downloadUrl);
 
-                            if (finalUrl.toLowerCase().startsWith("https://")) {
-                                finalUrl = "http://" + finalUrl.substring(8);
-                            } else if (!finalUrl.toLowerCase().startsWith("http://")) {
+                            finalUrl = Utils.httpsToHttp(finalUrl);
+                            if (!finalUrl.toLowerCase().startsWith("http://")) {
                                 finalUrl = "http://" + finalUrl;
                             }
                             finalUrl = finalUrl.replace(" ", "%20");
@@ -425,6 +426,8 @@ public class DetailsActivity extends Activity {
 
         final FrameLayout container = (FrameLayout) findViewById(R.id.details_reviews_container);
         if (container == null) return;
+        reviewsDead = false;
+        container.setVisibility(android.view.View.GONE);
 
         if (!AccountManager.isAccountSystemReachable(this)) {
 
@@ -450,75 +453,89 @@ public class DetailsActivity extends Activity {
         reviewsWebView = new WebView(this);
         reviewsWebView.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        reviewsWebView.getSettings().setJavaScriptEnabled(true);
+        Utils.configureWebViewCompat(reviewsWebView);
         reviewsWebView.setBackgroundColor(Theme.windowBackground());
-        reviewsWebView.setVerticalScrollBarEnabled(false);
-        reviewsWebView.setHorizontalScrollBarEnabled(false);
-        Utils.disableOverScrollIfSupported(reviewsWebView);
+        CookieHelper.enableCookiesForWebView(reviewsWebView);
 
-        final int maxHeightPx = getResources().getDisplayMetrics().heightPixels * 2;
+        final WebViewClient client;
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            client = new HttpAwareWebViewClient() {
+                @Override
+                public void onPageFinished(WebView view, String url) {
+                    super.onPageFinished(view, url);
+                    CookieHelper.flush();
+                    cancelReviewsTimeout();
+                    if (!reviewsDead) {
+                        container.setVisibility(View.VISIBLE);
+                    }
+                }
 
-        reviewsWebView.setWebViewClient(new WebViewClient() {
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                cancelReviewsTimeout();
-                scheduleReviewsHeightChecks(view, maxHeightPx);
-            }
+                @Override
+                public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                    killReviewsBlock(container);
+                }
 
-            @Override
-            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                @Override
+                protected void onMainFrameHttpError() {
+                    killReviewsBlock(container);
+                }
 
-                cancelReviewsTimeout();
-                container.setVisibility(View.GONE);
-            }
-        });
+                @Override
+                public void onReceivedSslError(WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
+                    handler.proceed();
+                }
+            };
+        } else {
+            client = new WebViewClient() {
+                @Override
+                public void onPageFinished(WebView view, String url) {
+                    super.onPageFinished(view, url);
+                    CookieHelper.flush();
+                    cancelReviewsTimeout();
+                    if (!reviewsDead) {
+                        container.setVisibility(View.VISIBLE);
+                    }
+                }
+
+                @Override
+                public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                    killReviewsBlock(container);
+                }
+
+                public void onReceivedSslError(WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
+                    handler.proceed();
+                }
+            };
+        }
+        reviewsWebView.setWebViewClient(client);
+
+        reviewsWebView.setWebChromeClient(new WebChromeClient());
 
         container.addView(reviewsWebView);
-        container.setVisibility(View.VISIBLE);
         reviewsWebView.loadUrl(UrlBuilder.reviewsUrl(this, currentPkg));
 
         reviewsTimeoutRunnable = new Runnable() {
             public void run() {
                 if (isFinishing() || reviewsWebView == null) return;
                 reviewsWebView.stopLoading();
-                container.setVisibility(View.GONE);
+                killReviewsBlock(container);
             }
         };
         handler.postDelayed(reviewsTimeoutRunnable, REVIEWS_LOAD_TIMEOUT_MS);
+    }
+
+    private boolean reviewsDead = false;
+
+    private void killReviewsBlock(android.view.View container) {
+        reviewsDead = true;
+        cancelReviewsTimeout();
+        container.setVisibility(View.GONE);
     }
 
     private void cancelReviewsTimeout() {
         if (reviewsTimeoutRunnable != null) {
             handler.removeCallbacks(reviewsTimeoutRunnable);
             reviewsTimeoutRunnable = null;
-        }
-    }
-
-    private void scheduleReviewsHeightChecks(final WebView view, final int maxHeightPx) {
-        int[] delaysMs = {300, 800, 1600, 3000};
-        for (final int delay : delaysMs) {
-            handler.postDelayed(new Runnable() {
-                public void run() {
-                    if (isFinishing() || reviewsWebView == null) return;
-                    applyMeasuredReviewsHeight(view.getContentHeight(), maxHeightPx);
-                }
-            }, delay);
-        }
-    }
-
-    private void applyMeasuredReviewsHeight(int cssHeight, int maxHeightPx) {
-        if (reviewsWebView == null || isFinishing()) return;
-        if (cssHeight <= 0) return;
-
-        float density = getResources().getDisplayMetrics().density;
-        int measuredPx = (int) (cssHeight * density + 0.5f);
-        int boundedPx = Math.min(measuredPx, maxHeightPx);
-
-        ViewGroup.LayoutParams params = reviewsWebView.getLayoutParams();
-        if (params.height != boundedPx) {
-            params.height = boundedPx;
-            reviewsWebView.setLayoutParams(params);
         }
     }
 
@@ -616,6 +633,7 @@ public class DetailsActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        FileLogger.i(Utils.TAG, "DetailsActivity.onDestroy");
         dismissProgress();
         if (activeDownloadTask != null) {
             activeDownloadTask.detach();
@@ -628,8 +646,10 @@ public class DetailsActivity extends Activity {
             cancelReviewsTimeout();
             reviewsWebView.stopLoading();
             reviewsWebView.setWebViewClient(null);
+            reviewsWebView.setWebChromeClient(null);
             reviewsWebView.destroy();
             reviewsWebView = null;
+            CookieHelper.flush();
         }
     }
 
@@ -755,7 +775,9 @@ public class DetailsActivity extends Activity {
         }).start();
     }
 
+    // Storage check, permission, then download task.
     private void downloadAndInstall(final String apkUrl, final String appName) {
+        FileLogger.i(Utils.TAG, "downloadAndInstall: " + appName + " <- " + apkUrl);
         if (!Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
             Toast.makeText(this, R.string.toast_sdcard_required, Toast.LENGTH_SHORT).show();
             return;
@@ -837,8 +859,10 @@ public class DetailsActivity extends Activity {
         }
     }
 
+    // Root silent install or system installer.
     void installApk(final File file) {
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        FileLogger.i(Utils.TAG, "installApk: " + (file != null ? file.getAbsolutePath() : "null"));
 
         if (file == null || !file.exists()) {
             Toast.makeText(this, R.string.toast_install_failed_not_found, Toast.LENGTH_SHORT).show();
@@ -851,6 +875,7 @@ public class DetailsActivity extends Activity {
             public void run() {
                 if (Utils.isRootAvailable()) {
                     final boolean success = Utils.installApkAsRoot(file.getAbsolutePath());
+                    FileLogger.i(Utils.TAG, "installApk: root install result=" + success);
                     handler.post(new Runnable() {
                         public void run() {
                             if (success) {
@@ -874,6 +899,7 @@ public class DetailsActivity extends Activity {
     }
 
     private void installApkViaSystemInstaller(File file) {
+        FileLogger.i(Utils.TAG, "installApkViaSystemInstaller: " + file.getAbsolutePath());
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW);
             if (android.os.Build.VERSION.SDK_INT >= 24) {
@@ -1001,7 +1027,7 @@ public class DetailsActivity extends Activity {
                 Exception lastError = null;
 
                 for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-                    String attemptUrl = useHttps ? httpsUrl : forceHttp(originalUrl);
+                    String attemptUrl = useHttps ? httpsUrl : Utils.httpsToHttp(originalUrl);
                     try {
                         attemptOnce(attemptUrl, resumeFrom, useHttps);
                         verifyIsApkOrThrow(outputFile);
@@ -1081,6 +1107,7 @@ public class DetailsActivity extends Activity {
             }
         }
 
+        // Single resumable download pass with redirects.
         private void attemptOnce(String startUrl, long resumeFrom, boolean allowHttps) throws Exception {
             HttpURLConnection conn = null;
             InputStream input = null;
@@ -1120,8 +1147,8 @@ public class DetailsActivity extends Activity {
                     if (redirectUrl == null) {
                         break;
                     }
-                    if (!allowHttps && redirectUrl.toLowerCase().startsWith("https://")) {
-                        redirectUrl = "http://" + redirectUrl.substring(8);
+                    if (!allowHttps) {
+                        redirectUrl = Utils.httpsToHttp(redirectUrl);
                     }
                     url = new URL(redirectUrl);
                     conn = (HttpURLConnection) url.openConnection();
@@ -1228,13 +1255,6 @@ public class DetailsActivity extends Activity {
             }
         }
 
-        private static String forceHttp(String url) {
-            if (url != null && url.toLowerCase().startsWith("https://")) {
-                return "http://" + url.substring(8);
-            }
-            return url;
-        }
-
         private static String stripScheme(String url) {
             int idx = url.indexOf("://");
             return idx >= 0 ? url.substring(idx + 3) : url;
@@ -1279,6 +1299,17 @@ public class DetailsActivity extends Activity {
                 file.delete();
                 throw new Exception("Downloaded package does not match the expected app.");
             }
+        }
+    }
+
+    private static final class NoAutoScrollScrollView extends ScrollView {
+        NoAutoScrollScrollView(Context context) {
+            super(context);
+        }
+
+        @Override
+        protected int computeScrollDeltaToGetChildRectOnScreen(Rect rect) {
+            return 0;
         }
     }
 }

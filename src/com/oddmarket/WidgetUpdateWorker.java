@@ -1,47 +1,40 @@
 package com.oddmarket;
-// Widget updater.
 
 import android.app.PendingIntent;
-import android.app.Service;
 import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
-import android.os.IBinder;
 import android.widget.RemoteViews;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-public class WidgetUpdateService extends Service {
-
-    @Override
-    public void onStart(Intent intent, int startId) {
-        super.onStart(intent, startId);
-        FileLogger.init(getApplicationContext());
-        new Thread(new Runnable() {
-            public void run() {
-                updateWidgetData();
-                stopSelf();
-            }
-        }).start();
-    }
-
-    @Override
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
+public class WidgetUpdateWorker {
 
     private static final int FLAG_IMMUTABLE_COMPAT = 0x02000000;
+    private static final int WIDGET_ICON_MAX_PX = 160;
 
-    private void updateWidgetData() {
-        AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(getApplicationContext());
-        ComponentName thisWidget = new ComponentName(getApplicationContext(), LatestAppsWidgetProvider.class);
+    public static void updateAllWidgets(Context appContext) {
+        FileLogger.init(appContext);
+        try {
+            updateWidgetData(appContext);
+        } catch (Exception e) {
+
+            FileLogger.w(Utils.TAG, "WidgetUpdateWorker: unexpected failure", e);
+        }
+    }
+
+    // Loads top apps into all widget instances.
+    private static void updateWidgetData(Context appContext) {
+        AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(appContext);
+        ComponentName thisWidget = new ComponentName(appContext, LatestAppsWidgetProvider.class);
         int[] allWidgetIds = appWidgetManager.getAppWidgetIds(thisWidget);
 
         if (allWidgetIds == null || allWidgetIds.length == 0) return;
 
-        RemoteViews views = new RemoteViews(getPackageName(), R.layout.widget_latest_apps);
+        RemoteViews views = new RemoteViews(appContext.getPackageName(), R.layout.widget_latest_apps);
         applyWidgetTheme(views);
 
         try {
@@ -55,20 +48,20 @@ public class WidgetUpdateService extends Service {
 
                 if (items.length() > 0) {
                     JSONObject app1 = items.getJSONObject(0);
-                    setupAppView(views, app1, R.id.widget_app1_container, R.id.widget_app1_icon, R.id.widget_app1_name, 1);
+                    setupAppView(appContext, views, app1, R.id.widget_app1_container, R.id.widget_app1_icon, R.id.widget_app1_name, 1);
                 }
                 if (items.length() > 1) {
                     JSONObject app2 = items.getJSONObject(1);
-                    setupAppView(views, app2, R.id.widget_app2_container, R.id.widget_app2_icon, R.id.widget_app2_name, 2);
+                    setupAppView(appContext, views, app2, R.id.widget_app2_container, R.id.widget_app2_icon, R.id.widget_app2_name, 2);
                 } else {
                     views.setViewVisibility(R.id.widget_app2_container, android.view.View.INVISIBLE);
                 }
             } else {
-                showError(views);
+                showError(appContext, views);
             }
         } catch (Exception e) {
             FileLogger.w(Utils.TAG, "Failed to update latest apps widget", e);
-            showError(views);
+            showError(appContext, views);
         }
 
         for (int widgetId : allWidgetIds) {
@@ -76,56 +69,54 @@ public class WidgetUpdateService extends Service {
         }
     }
 
-    private void applyWidgetTheme(RemoteViews views) {
+    private static void applyWidgetTheme(RemoteViews views) {
         views.setInt(R.id.widget_root, "setBackgroundColor", Theme.windowBackground());
         views.setTextColor(R.id.widget_app1_name, Theme.textPrimary());
         views.setTextColor(R.id.widget_app2_name, Theme.textPrimary());
         views.setTextColor(R.id.widget_error_text, Theme.textSecondary());
     }
 
-    private void showError(RemoteViews views) {
+    private static void showError(Context appContext, RemoteViews views) {
         views.setViewVisibility(R.id.widget_content_container, android.view.View.GONE);
         views.setViewVisibility(R.id.widget_error_container, android.view.View.VISIBLE);
 
-        Intent intent = new Intent(getApplicationContext(), MainActivity.class);
+        Intent intent = new Intent(appContext, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        PendingIntent pi = PendingIntent.getActivity(getApplicationContext(), 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | FLAG_IMMUTABLE_COMPAT);
+        PendingIntent pi = PendingIntent.getActivity(appContext, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | FLAG_IMMUTABLE_COMPAT);
         views.setOnClickPendingIntent(R.id.widget_error_container, pi);
     }
 
-    private void setupAppView(RemoteViews views, JSONObject appObj, int containerId, int iconId, int nameId, int requestCode) {
+    private static void setupAppView(Context appContext, RemoteViews views, JSONObject appObj, int containerId, int iconId, int nameId, int requestCode) {
         String pkg = appObj.optString("pkg", "");
-        String name = appObj.optString("name", getString(R.string.unknown));
+        String name = appObj.optString("name", appContext.getString(R.string.unknown));
         String iconUrl = appObj.optString("icon", "");
 
         views.setTextViewText(nameId, name);
         views.setViewVisibility(containerId, android.view.View.VISIBLE);
 
-        Bitmap bmp = downloadBitmap(iconUrl);
+        Bitmap bmp = downloadBitmap(appContext, iconUrl);
         if (bmp != null) {
             views.setImageViewBitmap(iconId, bmp);
         } else {
             views.setImageViewResource(iconId, R.drawable.ic_pic);
         }
 
-        boolean rusFix = MainActivity.isRussianUrlFixActive(getApplicationContext());
+        boolean rusFix = MainActivity.isRussianUrlFixActive(appContext);
         String domain = rusFix ? "odd-m.narod.ws" : "odd-m.w0.am";
         String link = "http://" + domain + "/?" + pkg;
 
-        Intent clickIntent = new Intent(getApplicationContext(), WebActivity.class);
+        Intent clickIntent = new Intent(appContext, WebActivity.class);
         clickIntent.putExtra("url", link);
         clickIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 
-        PendingIntent pi = PendingIntent.getActivity(getApplicationContext(), requestCode, clickIntent, PendingIntent.FLAG_UPDATE_CURRENT | FLAG_IMMUTABLE_COMPAT);
+        PendingIntent pi = PendingIntent.getActivity(appContext, requestCode, clickIntent, PendingIntent.FLAG_UPDATE_CURRENT | FLAG_IMMUTABLE_COMPAT);
         views.setOnClickPendingIntent(containerId, pi);
     }
 
-    private static final int WIDGET_ICON_MAX_PX = 160;
-
-    private Bitmap downloadBitmap(String urlStr) {
+    private static Bitmap downloadBitmap(Context appContext, String urlStr) {
         if (urlStr == null || urlStr.length() == 0) return null;
         try {
-            String fixedUrl = MainActivity.fixUrl(getApplicationContext(), urlStr);
+            String fixedUrl = MainActivity.fixUrl(appContext, urlStr);
             return Utils.downloadAndDecodeBitmap(fixedUrl, WIDGET_ICON_MAX_PX);
         } catch (OutOfMemoryError oom) {
             return null;

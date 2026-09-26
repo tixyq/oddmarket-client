@@ -1,15 +1,15 @@
 package com.oddmarket;
-// Login state via hidden WebView.
 
 import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.graphics.Bitmap;
-import android.net.Uri;
 import android.os.Handler;
+import android.util.DisplayMetrics;
+import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
 
 import java.util.regex.Pattern;
 
@@ -19,13 +19,9 @@ public final class AccountManager {
     private static final String KEY_LOGGED_IN = "account_logged_in";
     private static final String KEY_NICKNAME = "account_nickname";
 
-    private static final int WEBVIEW_TIMEOUT_MS = 15000;
+    private static final int WEBVIEW_TIMEOUT_MS = 25000;
 
-    private static final int QUIET_PERIOD_MS = 350;
-
-    private static final String PROBE_URL_PREFIX = "oddmarket-probe://body?v=";
-
-    private static final int CHUNK_SIZE = 500;
+    private static final int QUIET_PERIOD_MS = 400;
 
     private static final Pattern USERNAME_PATTERN =
             Pattern.compile("^[A-Za-z0-9_]{1,25}$");
@@ -105,7 +101,32 @@ public final class AccountManager {
         void onBody(String body);
     }
 
+    // Off-screen 2x2 params for hidden WebView.
+    private static ViewGroup.LayoutParams hiddenLayoutParams(ViewGroup host, Activity activity) {
+        if (!(host instanceof FrameLayout)) {
+            return new ViewGroup.LayoutParams(2, 2);
+        }
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(2, 2);
+        params.leftMargin = 0;
+        params.topMargin = 0;
+        return params;
+    }
+
+    // Alpha 0 via reflection, API 11+.
+    private static void applyInvisibleAppearance(WebView webView) {
+        if (android.os.Build.VERSION.SDK_INT >= 11) {
+            try {
+                java.lang.reflect.Method m = View.class.getMethod("setAlpha", float.class);
+                m.invoke(webView, 0f);
+            } catch (Exception e) {
+                FileLogger.w(Utils.TAG, "Could not set WebView alpha", e);
+            }
+        }
+    }
+
+    // Hidden WebView fetch with DOM read and timeout.
     private static Cancelable fetchViaWebView(final Activity activity, final ViewGroup hostView, final String url, final String label, final BodyCallback callback) {
+        FileLogger.w(Utils.TAG, label + ": starting fetch for " + url);
         if (activity == null || activity.isFinishing() || hostView == null) {
             if (callback != null) callback.onBody(null);
             return new Cancelable() {
@@ -114,95 +135,118 @@ public final class AccountManager {
         }
 
         final WebView webView = new WebView(activity);
-        webView.getSettings().setJavaScriptEnabled(true);
-        hostView.addView(webView, new ViewGroup.LayoutParams(1, 1));
+        Utils.configureWebViewCompat(webView);
+        CookieHelper.enableCookiesForWebView(webView);
+        applyInvisibleAppearance(webView);
+        hostView.addView(webView, hiddenLayoutParams(hostView, activity));
 
         final Handler handler = new Handler(activity.getMainLooper());
 
+        final Object lock = new Object();
         final boolean[] done = new boolean[]{false};
-        final Runnable[] probe = new Runnable[1];
+        final int[] gen = new int[]{0};
+        final String[] lastUrl = new String[]{url};
+        final Runnable[] fetchRun = new Runnable[1];
 
-        final StringBuilder collectedBody = new StringBuilder();
-        final int[] nextOffset = new int[]{0};
+        final BodyCallback[] activeExtractionCallback = new BodyCallback[1];
+        final Object domBridge = new Object() {
+            @android.webkit.JavascriptInterface
+            public void onHtml(final String html) {
+                new Handler(activity.getMainLooper()).post(new Runnable() {
+                    public void run() {
+                        BodyCallback cb = activeExtractionCallback[0];
+                        if (cb != null) cb.onBody(html);
+                    }
+                });
+            }
+        };
+        try {
+            webView.addJavascriptInterface(domBridge, LEGACY_JS_BRIDGE_NAME);
+        } catch (Exception e) {
+            FileLogger.w(Utils.TAG, label + ": could not register DOM bridge", e);
+        }
 
         final Runnable cleanup = new Runnable() {
             public void run() {
                 handler.removeCallbacksAndMessages(null);
+                CookieHelper.flush();
                 webView.stopLoading();
                 webView.setWebViewClient(null);
+                try {
+                    java.lang.reflect.Method m = WebView.class.getMethod("removeJavascriptInterface", String.class);
+                    m.invoke(webView, LEGACY_JS_BRIDGE_NAME);
+                } catch (Exception ignored) {}
                 hostView.removeView(webView);
                 webView.destroy();
             }
         };
 
-        webView.setWebViewClient(new WebViewClient() {
-            public boolean shouldOverrideUrlLoading(WebView view, String loadingUrl) {
-                if (loadingUrl != null && loadingUrl.startsWith(PROBE_URL_PREFIX)) {
-                    if (!done[0]) {
-                        String chunk;
-                        boolean more;
-                        try {
-                            Uri probeUri = Uri.parse(loadingUrl);
-                            chunk = probeUri.getQueryParameter("v");
-                            more = "1".equals(probeUri.getQueryParameter("m"));
-                        } catch (Exception e) {
-                            chunk = null;
-                            more = false;
-                        }
-                        if (chunk != null) collectedBody.append(chunk);
-                        if (more) {
-
-                            nextOffset[0] += CHUNK_SIZE;
-                            handler.post(probe[0]);
-                        } else {
-                            done[0] = true;
-                            String body = collectedBody.toString();
-                            cleanup.run();
-                            if (callback != null) callback.onBody(body);
-                        }
-                    }
-                    return true;
+        fetchRun[0] = new Runnable() {
+            public void run() {
+                synchronized (lock) {
+                    if (done[0]) return;
                 }
-                return false;
-            }
+                final int myGen;
+                synchronized (lock) {
+                    myGen = gen[0];
+                }
 
-            public void onPageStarted(WebView view, String startedUrl, Bitmap favicon) {
-                handler.removeCallbacks(probe[0]);
+                extractRenderedBody(webView, activeExtractionCallback, new BodyCallback() {
+                    public void onBody(final String body) {
+                        synchronized (lock) {
+                            if (done[0] || myGen != gen[0]) return;
+                            if (body == null || body.contains("toNumbers")) {
+                                FileLogger.w(Utils.TAG, label + ": still a challenge page or empty DOM, retrying ("
+                                        + (body == null ? "no body" : "challenge markup present") + ")");
+                                handler.removeCallbacks(fetchRun[0]);
+                                handler.postDelayed(fetchRun[0], QUIET_PERIOD_MS);
+                                return;
+                            }
+                            FileLogger.w(Utils.TAG, label + ": got clean body, done");
+                            done[0] = true;
+                        }
+                        cleanup.run();
+                        if (callback != null) callback.onBody(body);
+                    }
+                });
             }
+        };
 
+        webView.setWebViewClient(new WebViewClient() {
             public void onPageFinished(WebView view, String finishedUrl) {
-                if (done[0]) return;
-                handler.removeCallbacks(probe[0]);
-                handler.postDelayed(probe[0], QUIET_PERIOD_MS);
+
+                CookieHelper.flush();
+
+                synchronized (lock) {
+                    if (done[0]) return;
+                    gen[0]++;
+                    if (finishedUrl != null) lastUrl[0] = finishedUrl;
+                }
+                handler.removeCallbacks(fetchRun[0]);
+                handler.postDelayed(fetchRun[0], QUIET_PERIOD_MS);
             }
 
             public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-                if (done[0]) return;
-                done[0] = true;
+                synchronized (lock) {
+                    if (done[0]) return;
+                    done[0] = true;
+                }
                 FileLogger.w(Utils.TAG, label + ": WebView load error " + errorCode + " (" + description + ")");
                 cleanup.run();
                 if (callback != null) callback.onBody(null);
             }
-        });
 
-        probe[0] = new Runnable() {
-            public void run() {
-                if (done[0]) return;
-
-                webView.loadUrl("javascript:(function(){"
-                        + "var t=document.body.innerText;"
-                        + "var o=" + nextOffset[0] + ";"
-                        + "var c=t.substr(o," + CHUNK_SIZE + ");"
-                        + "var m=(o+c.length<t.length)?1:0;"
-                        + "location.href='" + PROBE_URL_PREFIX + "'+encodeURIComponent(c)+'&m='+m;"
-                        + "})();");
+            public void onReceivedSslError(WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
+                handler.proceed();
             }
-        };
+        });
 
         handler.postDelayed(new Runnable() {
             public void run() {
-                if (done[0]) return;
-                done[0] = true;
+                synchronized (lock) {
+                    if (done[0]) return;
+                    done[0] = true;
+                }
                 FileLogger.w(Utils.TAG, label + ": timed out after " + WEBVIEW_TIMEOUT_MS + "ms");
                 cleanup.run();
                 if (callback != null) callback.onBody(null);
@@ -213,11 +257,42 @@ public final class AccountManager {
 
         return new Cancelable() {
             public void cancel() {
-                if (done[0]) return;
-                done[0] = true;
+                synchronized (lock) {
+                    if (done[0]) return;
+                    done[0] = true;
+                }
                 cleanup.run();
             }
         };
+    }
+
+    private static final String CHALLENGE_STILL_PENDING = "toNumbers-challenge-still-pending";
+
+    // DOM read, modern or legacy bridge.
+    private static void extractRenderedBody(final WebView view, final BodyCallback[] activeExtractionCallback, final BodyCallback callback) {
+        final String script =
+                "(function(){"
+                        + "var html = document.documentElement ? document.documentElement.outerHTML : '';"
+                        + "if (html.indexOf('toNumbers') !== -1) { return '" + CHALLENGE_STILL_PENDING + "'; }"
+                        + "var b = document.body;"
+                        + "return b ? (b.innerText || b.textContent || '') : '';"
+                        + "})()";
+        extractRenderedBodyLegacy(view, script, activeExtractionCallback, callback);
+    }
+
+    private static final String LEGACY_JS_BRIDGE_NAME = "OddMarketDomBridge";
+
+    // Pre-19 DOM read via JS bridge.
+    private static void extractRenderedBodyLegacy(final WebView view, final String script, final BodyCallback[] activeExtractionCallback, final BodyCallback callback) {
+        activeExtractionCallback[0] = callback;
+        try {
+            view.loadUrl("javascript:(function(){try{var r=(" + script + ");"
+                    + LEGACY_JS_BRIDGE_NAME + ".onHtml(r);}catch(e){"
+                    + LEGACY_JS_BRIDGE_NAME + ".onHtml('');}})()");
+        } catch (Exception e) {
+            FileLogger.w(Utils.TAG, "Legacy DOM bridge failed", e);
+            callback.onBody(null);
+        }
     }
 
     public static Cancelable check(final Activity activity, ViewGroup hostView, final Callback callback) {

@@ -1,5 +1,4 @@
 package com.oddmarket;
-// Category key to localized string.
 
 import android.content.Context;
 

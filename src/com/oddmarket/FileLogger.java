@@ -1,7 +1,7 @@
 package com.oddmarket;
-// Logcat plus file log.
 
 import android.content.Context;
+import android.os.Environment;
 import android.util.Log;
 
 import java.io.File;
@@ -22,10 +22,37 @@ public final class FileLogger {
     private static final Object LOCK = new Object();
     private static volatile Context appContext;
 
+    private static volatile boolean sessionStarted = false;
+
+    private static volatile boolean externalMirrorDisabled = false;
+
     private FileLogger() {}
 
     public static void init(Context context) {
         appContext = Utils.resolveAppContext(appContext, context);
+    }
+
+    public static void startNewSession(Context context) {
+        if (sessionStarted) return;
+        synchronized (LOCK) {
+            if (sessionStarted) return;
+            sessionStarted = true;
+        }
+        init(context);
+        Context ctx = appContext;
+        if (ctx != null) {
+            new File(ctx.getFilesDir(), LOG_FILE_NAME).delete();
+            new File(ctx.getFilesDir(), LOG_FILE_NAME + ".old").delete();
+        }
+        deleteExternalMirrorQuietly();
+        i(Utils.TAG, "=== new session === model=" + android.os.Build.MODEL
+                + " sdk=" + android.os.Build.VERSION.SDK_INT
+                + " app=" + (ctx != null ? ctx.getPackageName() : "?"));
+    }
+
+    public static void i(String tag, String msg) {
+        Log.i(tag, msg);
+        write("INFO", tag, msg, null);
     }
 
     public static void w(String tag, String msg) {
@@ -48,13 +75,7 @@ public final class FileLogger {
         write("ERROR", tag, msg, t);
     }
 
-    private static void write(String level, String tag, String msg, Throwable t) {
-        Context ctx = appContext;
-        if (ctx == null) {
-
-            return;
-        }
-
+    private static String formatLine(String level, String tag, String msg, Throwable t) {
         StringBuilder line = new StringBuilder();
         line.append('[').append(timestamp()).append("] ");
         line.append(level).append('/').append(tag).append(": ").append(msg);
@@ -65,6 +86,14 @@ public final class FileLogger {
             line.append('\n').append(sw.toString());
         }
         line.append('\n');
+        return line.toString();
+    }
+
+    private static void write(String level, String tag, String msg, Throwable t) {
+        Context ctx = appContext;
+        if (ctx == null) return;
+
+        String line = formatLine(level, tag, msg, t);
 
         synchronized (LOCK) {
             File logFile = new File(ctx.getFilesDir(), LOG_FILE_NAME);
@@ -73,22 +102,61 @@ public final class FileLogger {
                 oldLogFile.delete();
                 logFile.renameTo(oldLogFile);
             }
+            appendQuietly(logFile, line);
+            appendToExternalMirrorQuietly(line);
+        }
+    }
 
-            FileOutputStream fos = null;
-            try {
-                fos = new FileOutputStream(logFile, true);
-                fos.write(line.toString().getBytes("UTF-8"));
-                fos.flush();
-            } catch (IOException e) {
-                Log.e("OddMarket", "FileLogger failed to write log file", e);
-            } finally {
-                if (fos != null) {
-                    try {
-                        fos.close();
-                    } catch (IOException ignored) {
-                    }
+    private static void appendQuietly(File file, String line) {
+        FileOutputStream fos = null;
+        try {
+            fos = new FileOutputStream(file, true);
+            fos.write(line.getBytes("UTF-8"));
+            fos.flush();
+        } catch (IOException e) {
+            Log.e("OddMarket", "FileLogger failed to write log file", e);
+        } finally {
+            if (fos != null) {
+                try {
+                    fos.close();
+                } catch (IOException ignored) {
                 }
             }
+        }
+    }
+
+    private static void appendToExternalMirrorQuietly(String line) {
+        if (externalMirrorDisabled) return;
+        FileOutputStream fos = null;
+        try {
+            if (!Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
+                externalMirrorDisabled = true;
+                return;
+            }
+            File externalLog = new File(Environment.getExternalStorageDirectory(), LOG_FILE_NAME);
+            fos = new FileOutputStream(externalLog, true);
+            fos.write(line.getBytes("UTF-8"));
+            fos.flush();
+        } catch (Throwable t) {
+
+            externalMirrorDisabled = true;
+        } finally {
+            if (fos != null) {
+                try {
+                    fos.close();
+                } catch (IOException ignored) {
+                }
+            }
+        }
+    }
+
+    private static void deleteExternalMirrorQuietly() {
+        try {
+            if (!Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
+                return;
+            }
+            new File(Environment.getExternalStorageDirectory(), LOG_FILE_NAME).delete();
+        } catch (Throwable ignored) {
         }
     }
 
