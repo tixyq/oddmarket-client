@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.oddmarket"
+    android:versionCode="26092604"
+    android:versionName="7.0.11">
+
+    <uses-sdk android:minSdkVersion="4" android:targetSdkVersion="34" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+        </intent>
+    </queries>
+
+    <application
+        android:label="OddMarket"
+        android:icon="@drawable/ic_launcher"
+        android:name=".OddMarketApplication"
+        android:usesCleartextTraffic="true"
+        android:requestLegacyExternalStorage="true">
+
+        <activity
+            android:label="OddMarket"
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="odd-m.w0.am" />
+                <data android:host="odd-m.w10.site" />
+                <data android:host="odd-m.oldcities.org" />
+                <data android:host="odd-m.narod.ws" />
+                <data android:host="oddmarket.ct.ws" />
+                <data android:host="oddmarket.w0.am" />
+                <data android:host="oddmarket.w10.site" />
+                <data android:host="oddmarket.oldcities.org" />
+                <data android:host="oddmarket.narod.ws" />
+            </intent-filter>
+        </activity>
+
+        <activity-alias
+            android:label="OddMarket"
+            android:icon="@drawable/ic_launcher"
+            android:name="com.oddmarket.Launcher1"
+            android:enabled="true"
+            android:exported="true"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:label="OddMarket"
+            android:icon="@drawable/ic_launcher2"
+            android:name="com.oddmarket.Launcher2"
+            android:enabled="false"
+            android:exported="true"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:label="OddMarket"
+            android:icon="@drawable/ic_launcher3"
+            android:name="com.oddmarket.Launcher3"
+            android:enabled="false"
+            android:exported="true"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:label="OddMarket"
+            android:icon="@drawable/ic_launcher4"
+            android:name="com.oddmarket.Launcher4"
+            android:enabled="false"
+            android:exported="true"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity android:name=".DetailsActivity" android:label="Details" android:exported="false" />
+        <activity android:name=".WebActivity" android:exported="false" />
+        <activity android:name=".SettingsActivity" android:exported="false" />
+
+        <provider
+            android:name=".ApkProvider"
+            android:authorities="com.oddmarket.provider"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
+        <receiver
+            android:name=".LatestAppsWidgetProvider"
+            android:label="OddMarket New Apps"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info" />
+        </receiver>
+
+    </application>
+</manifest>
