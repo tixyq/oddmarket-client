@@ -18,6 +18,7 @@
             android:orientation="vertical"
             android:gravity="center"
             android:background="@drawable/list_item_selector"
+                android:tag="soft_row"
             android:clickable="true"
             android:paddingTop="20dp"
             android:paddingBottom="20dp">
@@ -113,7 +114,8 @@
                 android:textSize="18sp"
                 android:clickable="true"
                 android:focusable="true"
-                android:background="@drawable/list_item_selector" />
+                android:background="@drawable/list_item_selector"
+                android:tag="soft_row" />
 
             <TextView
                 android:id="@+id/settings_btn_request_root"
@@ -127,7 +129,8 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:visibility="gone"
-                android:background="@drawable/list_item_selector" />
+                android:background="@drawable/list_item_selector"
+                android:tag="soft_row" />
         </LinearLayout>
 
         <TextView
@@ -158,6 +161,7 @@
                 android:gravity="center_vertical"
                 android:padding="10dp"
                 android:background="@drawable/list_item_selector"
+                android:tag="soft_row"
                 android:clickable="true">
                 <RadioButton
                     android:id="@+id/lang_ru_check"
@@ -182,6 +186,7 @@
                 android:gravity="center_vertical"
                 android:padding="10dp"
                 android:background="@drawable/list_item_selector"
+                android:tag="soft_row"
                 android:clickable="true"
                 android:layout_marginLeft="12dp">
                 <RadioButton
@@ -228,6 +233,7 @@
                 android:gravity="center_vertical"
                 android:padding="10dp"
                 android:background="@drawable/list_item_selector"
+                android:tag="soft_row"
                 android:clickable="true">
                 <RadioButton
                     android:id="@+id/theme_light_check"
@@ -252,6 +258,7 @@
                 android:gravity="center_vertical"
                 android:padding="10dp"
                 android:background="@drawable/list_item_selector"
+                android:tag="soft_row"
                 android:clickable="true"
                 android:layout_marginLeft="12dp">
                 <RadioButton
@@ -303,6 +310,7 @@
                     android:gravity="center"
                     android:padding="10dp"
                     android:background="@drawable/list_item_selector"
+                android:tag="soft_row"
                     android:clickable="true"
                     android:focusable="true">
                     <ImageView
@@ -326,6 +334,7 @@
                     android:gravity="center"
                     android:padding="10dp"
                     android:background="@drawable/list_item_selector"
+                android:tag="soft_row"
                     android:clickable="true"
                     android:focusable="true"
                     android:layout_marginLeft="12dp">
@@ -350,6 +359,7 @@
                     android:gravity="center"
                     android:padding="10dp"
                     android:background="@drawable/list_item_selector"
+                android:tag="soft_row"
                     android:clickable="true"
                     android:focusable="true"
                     android:layout_marginLeft="12dp">
@@ -374,6 +384,7 @@
                     android:gravity="center"
                     android:padding="10dp"
                     android:background="@drawable/list_item_selector"
+                android:tag="soft_row"
                     android:clickable="true"
                     android:focusable="true"
                     android:layout_marginLeft="12dp">

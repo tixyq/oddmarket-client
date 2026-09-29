@@ -62,7 +62,6 @@
     <string name="toast_install_failed_not_found">Установка не удалась: APK не найден.</string>
     <string name="toast_autoinstall_blocked">Автоустановка заблокирована. APK сохранён в папке Download.</string>
     <string name="toast_download_error_format">Ошибка загрузки: %1$s</string>
-    <string name="downloading_format">Загрузка %1$s...</string>
 
     <string name="desc_search_clear">Очистить поиск</string>
     <string name="desc_page_prev">Предыдущая страница</string>
@@ -120,4 +119,10 @@
 
     <string name="widget_title">Новые приложения</string>
     <string name="widget_error">Не удалось загрузить</string>
+    <string name="toast_download_start_failed">Не удалось начать загрузку</string>
+    <string name="notif_channel_downloads">Загрузки</string>
+    <string name="notif_download_done">Загрузка завершена. Нажмите, чтобы установить</string>
+    <string name="notif_downloading">Загрузка...</string>
+    <string name="notif_waiting">Ожидаем загрузку</string>
+    <string name="notif_download_error_format">Ошибка загрузки: %1$s</string>
 </resources>

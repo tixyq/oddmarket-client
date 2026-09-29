@@ -60,6 +60,7 @@
                     android:layout_height="wrap_content"
                     android:text="@string/btn_clear"
                     android:background="@drawable/list_item_selector"
+                android:tag="soft_circle"
                     android:duplicateParentState="true"
                     android:clickable="false"
                     android:focusable="false" />

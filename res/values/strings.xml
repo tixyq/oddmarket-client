@@ -62,7 +62,6 @@
     <string name="toast_install_failed_not_found">Installation failed: APK not found.</string>
     <string name="toast_autoinstall_blocked">Auto-install blocked. APK saved in Download folder.</string>
     <string name="toast_download_error_format">Download error: %1$s</string>
-    <string name="downloading_format">Downloading %1$s...</string>
 
     <string name="desc_search_clear">Clear search</string>
     <string name="desc_page_prev">Previous page</string>
@@ -120,4 +119,10 @@
 
     <string name="widget_title">New Apps</string>
     <string name="widget_error">Couldn\'t load</string>
+    <string name="toast_download_start_failed">Could not start the download</string>
+    <string name="notif_channel_downloads">Downloads</string>
+    <string name="notif_download_done">Download complete. Tap to install</string>
+    <string name="notif_downloading">Downloading...</string>
+    <string name="notif_waiting">Waiting to download</string>
+    <string name="notif_download_error_format">Download failed: %1$s</string>
 </resources>
