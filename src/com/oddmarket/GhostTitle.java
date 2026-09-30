@@ -2,20 +2,20 @@ package com.oddmarket;
 
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
-import android.graphics.PorterDuff;
 import android.graphics.RadialGradient;
 import android.graphics.Rect;
 import android.graphics.Shader;
-import android.graphics.drawable.Drawable;
 import android.os.SystemClock;
 import android.text.TextPaint;
 import android.text.TextUtils;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.SoundEffectConstants;
 import android.view.View;
@@ -25,6 +25,10 @@ import android.view.Window;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -37,8 +41,6 @@ public class GhostTitle extends View {
 
     public static final int TOUCH_SLOP_DP = 8;
 
-    private static int forcedHeightDp = 0;
-
     public static final int MODE_AUTO = 0;
 
     public static final int MODE_NORMAL = 1;
@@ -49,20 +51,24 @@ public class GhostTitle extends View {
 
     private static final float PROGRESS_DP = 3f;
     private static final long SWEEP_MS = 1100L;
-    private static final long FRAME_MS = 30L;
 
     private static final int SCRIM_ALPHA = 0x18;
+    private static final float SCRIM_HEIGHT_DP = 9f;
+
+    private static final int GLASS_SEE_THROUGH = 46;
+    private static final int BLUR_FIRST_DIV = 16;
+    private static final int BLUR_STEPS = 2;
+
+    private static final int BLUR_REAL_FPS = 10;
+    private static final long BLUR_REAL_MS = 1000L / BLUR_REAL_FPS;
+    private static final long BLUR_TICK_MS = 66L;
+    private static final long BLUR_SAFETY_MS = 250L;
 
     public static final int ID_BACK = -1;
     public static final int ID_MENU = -2;
 
-    public interface Listener {
-        boolean onAction(int id);
-    }
-
     private static final int KIND_BACK = 0;
     private static final int KIND_MENU = 1;
-    private static final int KIND_ICON = 2;
 
     private static final int MASK = 0xff;
 
@@ -76,8 +82,6 @@ public class GhostTitle extends View {
     private static final class Btn {
         int id;
         int kind;
-        Drawable icon;
-        CharSequence desc;
         final Rect bounds = new Rect();
     }
 
@@ -90,20 +94,12 @@ public class GhostTitle extends View {
 
     private final Btn backBtn = new Btn();
     private final Btn menuBtn = new Btn();
-    private final List<Btn> actions = new ArrayList<Btn>();
     private final List<Btn> visibleBtns = new ArrayList<Btn>();
 
     private boolean showBack = false;
     private boolean showMenu = false;
-    private boolean scrimEnabled = true;
-    private float scrimHeightDp = 9f;
 
     private CharSequence title = "";
-    private Listener listener;
-
-    private Integer iconOverride;
-    private Integer textOverride;
-
     private int iconColor;
     private int textColor;
     private int pressColor;
@@ -115,9 +111,63 @@ public class GhostTitle extends View {
     private final Paint pressPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint surfacePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint scrimPaint = new Paint();
+    private final Paint blurPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private final Rect blurSrc = new Rect();
+    private final Rect blurDst = new Rect();
+    private Bitmap[] blurBmp;
+    private Canvas[] blurCanvas;
+    private int blurForWidth = -1;
+    private boolean blurBroken = false;
+    private boolean blurValid = false;
+    private boolean blurPending = false;
+    private boolean blurMoving = false;
+    private boolean blurDirty = true;
+    private boolean blurEnabled = true;
+    private long blurCaptureMs = 0L;
+    private Bitmap[] blurFinal;
+    private Canvas[] blurFinalCanvas;
+    private int[][] blurPx;
+    private int blurCur = 0;
+    private boolean selfPass = false;
+    private boolean progressTickPending = false;
+    private final Runnable blurRefresh = new Runnable() {
+        public void run() {
+            blurPending = false;
+            selfPass = true;
+            invalidate();
+        }
+    };
+    private final Runnable progressTick = new Runnable() {
+        public void run() {
+            progressTickPending = false;
+            selfPass = true;
+            invalidate();
+        }
+    };
+    private final ViewTreeObserver.OnPreDrawListener preDrawListener =
+            new ViewTreeObserver.OnPreDrawListener() {
+                public boolean onPreDraw() {
+                    if (selfPass) {
+                        selfPass = false;
+                        return true;
+                    }
+                    if (blurBroken || !blurEnabled || getVisibility() != View.VISIBLE || getWidth() <= 0) return true;
+                    blurDirty = true;
+                    long age = SystemClock.uptimeMillis() - blurCaptureMs;
+                    if (age >= BLUR_REAL_MS) {
+                        invalidate();
+                    } else if (!blurPending) {
+                        blurPending = true;
+                        postDelayed(blurRefresh, BLUR_REAL_MS - age);
+                    }
+                    return true;
+                }
+            };
+    private float searchDockP = 0f;
     private final Path path = new Path();
     private final Paint progressFillPaint = new Paint();
     private final Paint progressTrackPaint = new Paint();
+    private final Paint idleLinePaint = new Paint();
 
     private boolean progressVisible = false;
     private boolean progressIndeterminate = false;
@@ -131,8 +181,6 @@ public class GhostTitle extends View {
     private long dlStart = 0L;
 
     private boolean layoutDirty = true;
-    private int leftReserve;
-    private int rightReserve;
 
     private CharSequence ellipsizedText;
     private CharSequence ellipsizedSource;
@@ -157,6 +205,7 @@ public class GhostTitle extends View {
     private GhostTitle(Activity activity) {
         super(activity);
         this.activity = activity;
+        this.blurEnabled = Utils.isBlurEnabled(activity);
         this.density = activity.getResources().getDisplayMetrics().density;
         int barDp = heightDp(activity);
         this.barPx = heightPx(activity);
@@ -184,17 +233,13 @@ public class GhostTitle extends View {
         surfacePaint.setStyle(Paint.Style.FILL);
 
         progressFillPaint.setColor(Theme.PROGRESS_COLOR);
+        idleLinePaint.setColor(Theme.PROGRESS_COLOR);
         progressTrackPaint.setColor((Theme.PROGRESS_COLOR & 0x00FFFFFF) | 0x33000000);
 
         refreshTheme();
     }
 
-    public static void setForcedHeightDp(int dp) {
-        forcedHeightDp = dp;
-    }
-
     public static int heightDp(Context c) {
-        if (forcedHeightDp > 0) return Math.max(forcedHeightDp, MIN_HEIGHT_DP);
         android.util.DisplayMetrics m = c.getResources().getDisplayMetrics();
         int dp = Math.round(m.heightPixels / m.density * HEIGHT_FRACTION);
         if (dp < MIN_HEIGHT_DP) dp = MIN_HEIGHT_DP;
@@ -226,7 +271,39 @@ public class GhostTitle extends View {
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.FILL_PARENT, heightPx(activity) + slopPx(activity), Gravity.TOP);
         content.addView(ghost, lp);
+        installMenuKeyHook(activity);
         return ghost;
+    }
+
+    private static void installMenuKeyHook(final Activity activity) {
+        try {
+            final Window w = activity.getWindow();
+            final Window.Callback orig = w.getCallback();
+            if (orig == null || Proxy.isProxyClass(orig.getClass())) return;
+            w.setCallback((Window.Callback) Proxy.newProxyInstance(
+                    GhostTitle.class.getClassLoader(), new Class[]{Window.Callback.class},
+                    new InvocationHandler() {
+                        public Object invoke(Object proxy, Method m, Object[] a) throws Throwable {
+                            if ("dispatchKeyEvent".equals(m.getName()) && a != null && a.length == 1
+                                    && a[0] instanceof KeyEvent) {
+                                KeyEvent e = (KeyEvent) a[0];
+                                if (e.getKeyCode() == KeyEvent.KEYCODE_MENU) {
+                                    if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) {
+                                        openMenu(activity);
+                                    }
+                                    return Boolean.TRUE;
+                                }
+                            }
+                            try {
+                                return m.invoke(orig, a);
+                            } catch (InvocationTargetException ex) {
+                                throw ex.getCause() != null ? ex.getCause() : ex;
+                            }
+                        }
+                    }));
+        } catch (Exception e) {
+            FileLogger.w(Utils.TAG, "GhostTitle.installMenuKeyHook failed", e);
+        }
     }
 
     public static View insertSpacer(LinearLayout parent, int color) {
@@ -258,27 +335,25 @@ public class GhostTitle extends View {
         return this;
     }
 
+    public int getLeftReservePx() {
+        return showBack ? reserveEdgePx() + reserveButtonPx() : 0;
+    }
+
+    public int getRightReservePx() {
+        return reserveEdgePx() + (showMenu ? reserveButtonPx() : 0);
+    }
+
+    private int reserveEdgePx() {
+        return (int) (4 * density);
+    }
+
+    private int reserveButtonPx() {
+        int w = getWidth() > 0 ? getWidth() : getResources().getDisplayMetrics().widthPixels;
+        return (int) ((w / density <= 320f ? 44 : 48) * density);
+    }
+
     public GhostTitle setMenuVisible(boolean visible) {
         showMenu = visible;
-        layoutDirty = true;
-        invalidate();
-        return this;
-    }
-
-    public GhostTitle addAction(int id, Drawable icon, CharSequence description) {
-        Btn b = new Btn();
-        b.id = id;
-        b.kind = KIND_ICON;
-        b.icon = icon.mutate();
-        b.desc = description;
-        actions.add(b);
-        layoutDirty = true;
-        invalidate();
-        return this;
-    }
-
-    public GhostTitle clearActions() {
-        actions.clear();
         layoutDirty = true;
         invalidate();
         return this;
@@ -337,22 +412,11 @@ public class GhostTitle extends View {
         return this;
     }
 
-    public GhostTitle setProgressIndeterminate(boolean indeterminate) {
-        if (progressIndeterminate == indeterminate) return this;
-        progressIndeterminate = indeterminate;
-        invalidate();
-        return this;
-    }
-
     public GhostTitle hideProgress() {
         if (!progressVisible) return this;
         progressVisible = false;
         invalidate();
         return this;
-    }
-
-    public boolean isProgressVisible() {
-        return progressVisible;
     }
 
     public GhostTitle setDownloadProgress(int percent, boolean indeterminate) {
@@ -373,34 +437,9 @@ public class GhostTitle extends View {
         return this;
     }
 
-    public GhostTitle setListener(Listener l) {
-        listener = l;
-        return this;
-    }
-
-    public GhostTitle setScrim(boolean enabled, float heightDp) {
-        scrimEnabled = enabled;
-        scrimHeightDp = heightDp;
-        buildScrim();
-        invalidate();
-        return this;
-    }
-
-    public GhostTitle setIconColor(Integer color) {
-        iconOverride = color;
-        refreshTheme();
-        return this;
-    }
-
-    public GhostTitle setTextColor(Integer color) {
-        textOverride = color;
-        refreshTheme();
-        return this;
-    }
-
     public void refreshTheme() {
-        iconColor = (iconOverride != null) ? iconOverride.intValue() : Theme.textPrimary();
-        textColor = (textOverride != null) ? textOverride.intValue() : Theme.textPrimary();
+        iconColor = Theme.textPrimary();
+        textColor = iconColor;
         pressColor = Theme.listItemPressed();
 
         buildShaders();
@@ -427,11 +466,7 @@ public class GhostTitle extends View {
     }
 
     private void buildScrim() {
-        float h = scrimHeightDp * density;
-        if (h <= 0f) {
-            scrimPaint.setShader(null);
-            return;
-        }
+        float h = SCRIM_HEIGHT_DP * density;
         scrimPaint.setShader(new LinearGradient(0f, 0f, 0f, h,
                 Color.argb(SCRIM_ALPHA, 0, 0, 0),
                 Color.argb(0, 0, 0, 0), Shader.TileMode.CLAMP));
@@ -441,12 +476,41 @@ public class GhostTitle extends View {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         getViewTreeObserver().addOnScrollChangedListener(scrollListener);
+        getViewTreeObserver().addOnPreDrawListener(preDrawListener);
+        blurDirty = true;
+        refreshBlurEnabled();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasWindowFocus) {
+        super.onWindowFocusChanged(hasWindowFocus);
+        if (hasWindowFocus) refreshBlurEnabled();
+    }
+
+    public void refreshBlurEnabled() {
+        boolean on = Utils.isBlurEnabled(getContext());
+        if (on == blurEnabled) return;
+        blurEnabled = on;
+        blurDirty = true;
+        if (!on) {
+            removeCallbacks(blurRefresh);
+            blurPending = false;
+            blurMoving = false;
+        }
+        invalidate();
     }
 
     @Override
     protected void onDetachedFromWindow() {
+        removeCallbacks(blurRefresh);
+        blurPending = false;
         ViewTreeObserver o = getViewTreeObserver();
-        if (o.isAlive()) o.removeOnScrollChangedListener(scrollListener);
+        if (o.isAlive()) {
+            o.removeOnScrollChangedListener(scrollListener);
+            o.removeOnPreDrawListener(preDrawListener);
+        }
+        removeCallbacks(progressTick);
+        progressTickPending = false;
         super.onDetachedFromWindow();
     }
 
@@ -463,6 +527,7 @@ public class GhostTitle extends View {
         int y = scrollTarget.getScrollY();
         if (mode != MODE_AUTO) {
             lastScrollY = y;
+            invalidate();
             return;
         }
         if (y == lastScrollY) return;
@@ -516,26 +581,12 @@ public class GhostTitle extends View {
         int btnW = (int) ((w / density <= 320f ? 44 : 48) * density);
         int edge = (int) (4 * density);
 
-        leftReserve = 0;
-        if (showBack) {
-            backBtn.bounds.set(edge, 0, edge + btnW, h);
-            leftReserve = edge + btnW;
-        }
+        if (showBack) backBtn.bounds.set(edge, 0, edge + btnW, h);
 
-        int right = w - edge;
-        if (showMenu) {
-            menuBtn.bounds.set(right - btnW, 0, right, h);
-            right -= btnW;
-        }
-        for (int i = actions.size() - 1; i >= 0; i--) {
-            actions.get(i).bounds.set(right - btnW, 0, right, h);
-            right -= btnW;
-        }
-        rightReserve = w - right;
+        if (showMenu) menuBtn.bounds.set(w - edge - btnW, 0, w - edge, h);
 
         visibleBtns.clear();
         if (showBack) visibleBtns.add(backBtn);
-        visibleBtns.addAll(actions);
         if (showMenu) visibleBtns.add(menuBtn);
     }
 
@@ -561,11 +612,10 @@ public class GhostTitle extends View {
         int w = getWidth();
         int h = barPx;
 
+        drawBlurBackdrop(c, w, h);
+        surfacePaint.setAlpha((blurEnabled && !blurBroken) ? 255 - GLASS_SEE_THROUGH : 255);
         c.drawRect(0f, 0f, w, h, surfacePaint);
-
-        if (scrimEnabled && scrimHeightDp > 0f) {
-            c.drawRect(0f, 0f, w, scrimHeightDp * density, scrimPaint);
-        }
+        c.drawRect(0f, 0f, w, SCRIM_HEIGHT_DP * density, scrimPaint);
 
         List<Btn> buttons = visibleButtons();
 
@@ -573,7 +623,8 @@ public class GhostTitle extends View {
         float btnShadowR = 24f * density * shadowScale;
 
         float cy = h / 2f - hid * h * 0.6f;
-        int titleAlpha = (int) (255 * (1f - hid));
+
+        int titleAlpha = (int) (255 * (1f - hid) * (1f - Math.min(1f, searchDockP * 2f)));
 
         CharSequence text = null;
         float titleX = 0f;
@@ -617,17 +668,170 @@ public class GhostTitle extends View {
         drawProgress(c, w);
     }
 
+    public GhostTitle setSearchDockProgress(float p) {
+        if (p < 0f) p = 0f;
+        if (p > 1f) p = 1f;
+        if (p == searchDockP) return this;
+        searchDockP = p;
+        invalidate();
+        return this;
+    }
+
+    private boolean ensureBlurBuffers(int w) {
+        if (blurBmp != null && blurForWidth == w) return true;
+        blurBmp = null;
+        blurCanvas = null;
+        blurFinal = null;
+        blurFinalCanvas = null;
+        blurPx = null;
+        blurValid = false;
+        blurMoving = false;
+        if (w <= 0 || barPx <= 0) return false;
+        int bw = Math.max(2, (w + BLUR_FIRST_DIV - 1) / BLUR_FIRST_DIV);
+        int bh = Math.max(2, (barPx + BLUR_FIRST_DIV - 1) / BLUR_FIRST_DIV);
+        Bitmap[] b = new Bitmap[BLUR_STEPS + 1];
+        Canvas[] cv = new Canvas[BLUR_STEPS + 1];
+        for (int i = 0; i <= BLUR_STEPS; i++) {
+            b[i] = Bitmap.createBitmap(bw, bh, Bitmap.Config.RGB_565);
+            cv[i] = new Canvas(b[i]);
+            bw = Math.max(2, bw / 2);
+            bh = Math.max(2, bh / 2);
+        }
+        blurBmp = b;
+        blurCanvas = cv;
+        int fw = b[BLUR_STEPS].getWidth();
+        int fh = b[BLUR_STEPS].getHeight();
+        blurFinal = new Bitmap[2];
+        blurFinalCanvas = new Canvas[2];
+        blurPx = new int[2][fw * fh];
+        for (int i = 0; i < 2; i++) {
+            blurFinal[i] = Bitmap.createBitmap(fw, fh, Bitmap.Config.RGB_565);
+            blurFinalCanvas[i] = new Canvas(blurFinal[i]);
+        }
+        blurForWidth = w;
+        return true;
+    }
+
+    private void drawBlurBackdrop(Canvas c, int w, int h) {
+        if (blurBroken || !blurEnabled) return;
+        try {
+            if (!ensureBlurBuffers(w)) return;
+            ViewGroup parent = (ViewGroup) getParent();
+            if (parent == null) return;
+
+            long now = SystemClock.uptimeMillis();
+            long age = now - blurCaptureMs;
+            boolean captured = false;
+            if (!blurValid || ((blurDirty || age >= BLUR_SAFETY_MS) && age >= BLUR_REAL_MS)) {
+                blurDirty = false;
+                captureBlur(parent, w, h);
+                blurCaptureMs = now;
+                captured = true;
+            }
+
+            float a = 1f;
+            if (blurMoving) a = Math.min(1f, (now - blurCaptureMs) / (float) BLUR_REAL_MS);
+            Bitmap cur = blurFinal[blurCur];
+            Bitmap prev = blurFinal[1 - blurCur];
+            blurSrc.set(0, 0, cur.getWidth(), cur.getHeight());
+            blurDst.set(0, 0, w, h);
+            if (a < 1f) {
+                blurPaint.setAlpha(255);
+                c.drawBitmap(prev, blurSrc, blurDst, blurPaint);
+            }
+            blurPaint.setAlpha(a < 1f ? (int) (a * 255f + 0.5f) : 255);
+            c.drawBitmap(cur, blurSrc, blurDst, blurPaint);
+
+            if (blurMoving && a >= 1f && !captured) blurMoving = false;
+            long delay = -1L;
+            if (blurMoving) delay = BLUR_TICK_MS;
+            if (blurDirty && !captured) {
+                long rest = Math.max(1L, BLUR_REAL_MS - age);
+                delay = (delay < 0L) ? rest : Math.min(delay, rest);
+            }
+            if (delay > 0L && !blurPending) {
+                blurPending = true;
+                postDelayed(blurRefresh, delay);
+            }
+        } catch (Throwable t) {
+            blurBroken = true;
+            FileLogger.w(Utils.TAG, "GhostTitle: backdrop blur disabled", t);
+        }
+    }
+
+    private void captureBlur(ViewGroup parent, int w, int h) {
+        Bitmap b0 = blurBmp[0];
+        Canvas c0 = blurCanvas[0];
+        c0.drawColor(Theme.windowBackground() | 0xFF000000);
+        c0.save();
+        c0.scale(b0.getWidth() / (float) w, b0.getHeight() / (float) h);
+        int self = parent.indexOfChild(this);
+        int myTop = getTop();
+        for (int i = 0; i < self; i++) {
+            View v = parent.getChildAt(i);
+            if (v.getVisibility() != View.VISIBLE) continue;
+
+            if (v.getBottom() <= myTop || v.getTop() >= myTop + h) continue;
+            c0.save();
+            c0.translate(v.getLeft() - v.getScrollX() - getLeft(), v.getTop() - v.getScrollY() - myTop);
+            v.draw(c0);
+            c0.restore();
+        }
+        c0.restore();
+
+        blurPaint.setAlpha(255);
+        for (int i = 1; i <= BLUR_STEPS; i++) {
+            Bitmap src = blurBmp[i - 1];
+            Bitmap dst = blurBmp[i];
+            blurSrc.set(0, 0, src.getWidth(), src.getHeight());
+            blurDst.set(0, 0, dst.getWidth(), dst.getHeight());
+            blurCanvas[i].drawBitmap(src, blurSrc, blurDst, blurPaint);
+        }
+
+        Bitmap last = blurBmp[BLUR_STEPS];
+        int fw = last.getWidth();
+        int fh = last.getHeight();
+        if (!blurValid) {
+            blurFinalCanvas[0].drawBitmap(last, 0f, 0f, null);
+            blurFinalCanvas[1].drawBitmap(last, 0f, 0f, null);
+            blurCur = 0;
+            blurValid = true;
+            blurMoving = false;
+            return;
+        }
+        int prevIdx = blurCur;
+        blurCur = 1 - blurCur;
+        blurFinalCanvas[blurCur].drawBitmap(last, 0f, 0f, null);
+        blurFinal[prevIdx].getPixels(blurPx[prevIdx], 0, fw, 0, 0, fw, fh);
+        blurFinal[blurCur].getPixels(blurPx[blurCur], 0, fw, 0, 0, fw, fh);
+        boolean same = true;
+        int[] pa = blurPx[prevIdx];
+        int[] pb = blurPx[blurCur];
+        for (int i = 0; i < pa.length; i++) {
+            if (pa[i] != pb[i]) { same = false; break; }
+        }
+        blurMoving = !same;
+    }
+
     private void drawProgress(Canvas c, int w) {
+        if (w <= 0) return;
         boolean dl = dlVisible;
-        if ((!dl && !progressVisible) || w <= 0) return;
+        float top = barBottom();
+        float bottom = top + Math.max(PROGRESS_DP * density, 2f);
+
+        if (!dl && !progressVisible) {
+            idleLinePaint.setAlpha(surfacePaint.getAlpha());
+            c.drawRect(0f, top, w, bottom, idleLinePaint);
+            return;
+        }
+
+        progressFillPaint.setAlpha(surfacePaint.getAlpha());
+        c.drawRect(0f, top, w, bottom, progressTrackPaint);
+
         boolean indeterminate = dl ? dlIndeterminate : progressIndeterminate;
         int value = dl ? dlValue : progressValue;
         int max = dl ? 100 : progressMax;
         long start = dl ? dlStart : progressStart;
-
-        float bottom = barBottom();
-        float top = bottom - Math.max(PROGRESS_DP * density, 2f);
-        c.drawRect(0f, top, w, bottom, progressTrackPaint);
 
         if (indeterminate) {
             float seg = w * 0.35f;
@@ -637,7 +841,10 @@ public class GhostTitle extends View {
             c.clipRect(0f, top, w, bottom);
             c.drawRect(left, top, left + seg, bottom, progressFillPaint);
             c.restore();
-            postInvalidateDelayed(FRAME_MS);
+            if (!progressTickPending) {
+                progressTickPending = true;
+                Utils.postFrame(this, progressTick);
+            }
         } else if (value > 0) {
             c.drawRect(0f, top, w * (value / (float) max), bottom, progressFillPaint);
         }
@@ -668,11 +875,6 @@ public class GhostTitle extends View {
             c.drawLine(cx - half, cy - gap, cx + half, cy - gap, strokePaint);
             c.drawLine(cx - half, cy, cx + half, cy, strokePaint);
             c.drawLine(cx - half, cy + gap, cx + half, cy + gap, strokePaint);
-        } else if (b.icon != null) {
-            int r = (int) (12 * d);
-            b.icon.setBounds((int) cx - r, (int) cy - r, (int) cx + r, (int) cy + r);
-            b.icon.setColorFilter(iconColor, PorterDuff.Mode.SRC_IN);
-            b.icon.draw(c);
         }
     }
 
@@ -742,13 +944,17 @@ public class GhostTitle extends View {
 
     private void fire(Btn b) {
         playSoundEffect(SoundEffectConstants.CLICK);
-        if (listener != null && listener.onAction(b.id)) {
-            return;
-        }
         if (b.id == ID_BACK) {
             activity.finish();
         } else if (b.id == ID_MENU) {
-            activity.openOptionsMenu();
+            openMenu(activity);
         }
+    }
+
+    static void openMenu(Activity activity) {
+        if (PopupMenuCompat.show(activity)) {
+            return;
+        }
+        activity.openOptionsMenu();
     }
 }

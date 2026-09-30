@@ -17,7 +17,6 @@ import android.widget.CompoundButton;
 import android.widget.RadioButton;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.util.Log;
 import java.io.File;
 
 public class SettingsActivity extends Activity {
@@ -74,7 +73,6 @@ public class SettingsActivity extends Activity {
         Theme.applySoftRows(findViewById(R.id.settings_root));
         applyTheme();
 
-        GhostTitle.insertSpacer((android.widget.LinearLayout) findViewById(R.id.settings_root), Theme.windowBackground());
         ghostTitle = GhostTitle.attach(this).setBackVisible(true).setMenuVisible(false)
                 .setMode(GhostTitle.MODE_AUTO).setBaseColor(Theme.windowBackground()).trackScroll(findViewById(R.id.settings_scroll_root));
 
@@ -82,6 +80,7 @@ public class SettingsActivity extends Activity {
         TextView versionText = (TextView) findViewById(R.id.settings_version_text);
         final CheckBox cbRussianDomain = (CheckBox) findViewById(R.id.settings_cb_rus_fix);
         final CheckBox cbLegacyDl = (CheckBox) findViewById(R.id.settings_cb_legacy_dl);
+        final CheckBox cbBlur = (CheckBox) findViewById(R.id.settings_cb_blur);
 
         findViewById(R.id.link_telegram).setOnClickListener(new View.OnClickListener() {
             @Override
@@ -100,7 +99,7 @@ public class SettingsActivity extends Activity {
         String versionName = getString(R.string.unknown);
         try {
             PackageInfo pInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
-            versionName = pInfo.versionName;
+            versionName = pInfo.versionName + " (" + pInfo.versionCode + ")";
         } catch (Exception e) {
             FileLogger.w(Utils.TAG, "Could not read own package version", e);
         }
@@ -116,6 +115,7 @@ public class SettingsActivity extends Activity {
         final SharedPreferences prefs = getSharedPreferences("prefs", MODE_PRIVATE);
         cbRussianDomain.setChecked(prefs.getBoolean("rus_url_fix", false));
         cbLegacyDl.setChecked(prefs.getBoolean("legacy_download", false));
+        cbBlur.setChecked(Utils.isBlurEnabled(this));
 
         cbRussianDomain.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
@@ -128,6 +128,14 @@ public class SettingsActivity extends Activity {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 Utils.savePrefs(prefs.edit().putBoolean("legacy_download", isChecked));
+            }
+        });
+
+        cbBlur.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                Utils.savePrefs(prefs.edit().putBoolean("blur_enabled", isChecked));
+                if (ghostTitle != null) ghostTitle.refreshBlurEnabled();
             }
         });
 
@@ -345,6 +353,7 @@ public class SettingsActivity extends Activity {
         if (togglesBlock != null) togglesBlock.setBackgroundColor(Theme.tabRowBackground());
         Utils.setTextColorById(this, R.id.settings_rus_fix_label, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_legacy_dl_label, Theme.textPrimary());
+        Utils.setTextColorById(this, R.id.settings_blur_label, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_btn_send_log, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_btn_request_root, Theme.textPrimary());
 

@@ -18,10 +18,13 @@ import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.WindowManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.RectF;
 import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.Button;
@@ -79,6 +82,23 @@ public class DetailsActivity extends Activity {
     private FrameLayout overlayLayout;
     private GhostTitle ghostTitle;
     private SlowGallery overlayGallery;
+    private View overlayDim;
+    private boolean overlayShowFull = false;
+    private int overlayStartIndex = -1;
+    private ZoomView zoomView;
+    private boolean closing = false;
+    private ArrayList<View> overlaySources;
+    private ArrayList<View> screenshotThumbs;
+    private HorizontalScrollView screenshotsScroll;
+    private final int[] locA = new int[2];
+    private final int[] locB = new int[2];
+    private java.util.concurrent.CountDownLatch thumbsLatch;
+    private final Runnable swapToFullRunnable = new Runnable() {
+        public void run() {
+            overlayShowFull = true;
+            refreshOverlayImages();
+        }
+    };
     private ViewGroup originalView;
 
     private ArrayList<String> appScreenshots;
@@ -114,10 +134,15 @@ public class DetailsActivity extends Activity {
         ghostTitle = GhostTitle.attach(this).setBackVisible(true).setMenuVisible(true)
                 .setMode(GhostTitle.MODE_AUTO).setBaseColor(Theme.tabRowBackground()).trackScroll(rootLayout.getChildAt(0));
 
+        ViewGroup content = (ViewGroup) findViewById(android.R.id.content);
+        content.addView(overlayLayout, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.FILL_PARENT));
+
         applyResponsiveHeaderLayout();
         bindIntentData();
         wireDownloadButton();
         buildScreenshotsRow();
+        startFullImageSequence();
         buildReviewsWebView();
 
         btnDownload.requestFocus();
@@ -134,14 +159,11 @@ public class DetailsActivity extends Activity {
         View headerContainer = originalContentView.findViewById(R.id.details_header_container);
         if (headerContainer != null) {
             headerContainer.setBackgroundColor(Theme.tabRowBackground());
-            if (headerContainer.getParent() instanceof LinearLayout) {
-                GhostTitle.insertSpacer((LinearLayout) headerContainer.getParent(), Theme.tabRowBackground());
-            }
         }
 
         ScrollView scrollView = new NoAutoScrollScrollView(this);
         scrollView.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.FILL_PARENT));
-        scrollView.setBackgroundColor(Theme.windowBackground());
+        scrollView.setBackgroundColor(Theme.tabRowBackground());
         scrollView.setFillViewport(true);
 
         try {
@@ -157,7 +179,10 @@ public class DetailsActivity extends Activity {
 
         overlayLayout = new FrameLayout(this);
         overlayLayout.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.FILL_PARENT));
-        overlayLayout.setBackgroundColor(0xCC000000);
+        overlayDim = new View(this);
+        overlayDim.setBackgroundColor(0xCC000000);
+        overlayLayout.addView(overlayDim, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.FILL_PARENT));
         overlayLayout.setVisibility(View.GONE);
 
         overlayGallery = new SlowGallery(this);
@@ -173,7 +198,8 @@ public class DetailsActivity extends Activity {
         });
 
         overlayLayout.addView(overlayGallery);
-        rootLayout.addView(overlayLayout);
+        // Created up front so it is already laid out when the first zoom starts.
+        ensureZoomView();
     }
 
     private void applyResponsiveHeaderLayout() {
@@ -284,11 +310,13 @@ public class DetailsActivity extends Activity {
         if (iconUrl != null && iconUrl.length() > 0) {
             appIconList.add(iconUrl);
         }
+        final ArrayList<View> iconSources = new ArrayList<View>();
+        iconSources.add(imgIcon);
         imgIcon.setFocusable(true);
         imgIcon.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                showOverlay(appIconList, 0);
+                showOverlay(appIconList, iconSources, 0);
             }
         });
 
@@ -356,8 +384,24 @@ public class DetailsActivity extends Activity {
         });
     }
 
+    // A thumbnail counts as loaded when it shows a real picture: not empty (still downloading) and
+    // not the ic_pic placeholder that loadSized puts in when the download failed.
+    private boolean isThumbLoaded(View v) {
+        if (!(v instanceof ImageView)) return false;
+        android.graphics.drawable.Drawable d = ((ImageView) v).getDrawable();
+        if (d == null) return false;
+        try {
+            android.graphics.drawable.Drawable ph = getResources().getDrawable(R.drawable.ic_pic);
+            if (ph != null && d.getConstantState() != null
+                    && d.getConstantState() == ph.getConstantState()) return false;
+        } catch (Exception e) {
+            // fall through: treat as loaded
+        }
+        return true;
+    }
+
     private void buildScreenshotsRow() {
-        HorizontalScrollView screenshotsScroll = (HorizontalScrollView) findViewById(R.id.details_screenshots_scroll);
+        screenshotsScroll = (HorizontalScrollView) findViewById(R.id.details_screenshots_scroll);
         LinearLayout screenshotsContainer = (LinearLayout) findViewById(R.id.details_screenshots_container);
         View screenshotsCaption = findViewById(R.id.details_caption_screenshots);
 
@@ -372,6 +416,9 @@ public class DetailsActivity extends Activity {
         int heightPx = (int) (200 * scale + 0.5f);
         int marginPx = (int) (10 * scale + 0.5f);
 
+        int thumbMaxPx = (int) (heightPx * 1.25f);
+        thumbsLatch = new java.util.concurrent.CountDownLatch(appScreenshots.size());
+        screenshotThumbs = new ArrayList<View>();
         ImageView prevThumb = null;
         int firstThumbId = View.NO_ID;
         for (int i = 0; i < appScreenshots.size(); i++) {
@@ -385,7 +432,7 @@ public class DetailsActivity extends Activity {
             img.setAdjustViewBounds(true);
             img.setScaleType(ImageView.ScaleType.FIT_CENTER);
 
-            MainActivity.loadBannerImage(url, img, true);
+            MainActivity.loadSized(url, img, thumbMaxPx, thumbsLatch);
 
             img.setId(Utils.generateViewId());
             if (i == 0) firstThumbId = img.getId();
@@ -400,10 +447,12 @@ public class DetailsActivity extends Activity {
             img.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    showOverlay(appScreenshots, index);
+                    if (!isThumbLoaded(v)) return;
+                    showOverlay(appScreenshots, screenshotThumbs, index);
                 }
             });
 
+            screenshotThumbs.add(img);
             screenshotsContainer.addView(img);
         }
 
@@ -538,28 +587,438 @@ public class DetailsActivity extends Activity {
         if (ghostTitle != null) ghostTitle.setTitle(title);
     }
 
-    private void showOverlay(ArrayList<String> images, int startIndex) {
-        if (overlayLayout != null && images != null && startIndex >= 0 && startIndex < images.size()) {
+    private void showOverlay(ArrayList<String> images, ArrayList<View> sources, int startIndex) {
+        if (overlayLayout != null && images != null && sources != null
+                && startIndex >= 0 && startIndex < images.size() && startIndex < sources.size()) {
+            resetOverlayState();
+            closing = false;
             overlayImages = images;
+            overlaySources = sources;
+            overlayStartIndex = startIndex;
+            overlayShowFull = false;
+            handler.removeCallbacks(swapToFullRunnable);
+            MainActivity.prefetchFull(getApplicationContext(), images.get(startIndex));
             overlayGallery.setAdapter(new ScreenshotAdapter());
             overlayGallery.setSelection(startIndex);
             overlayLayout.setVisibility(View.VISIBLE);
-            if (ghostTitle != null) ghostTitle.setVisibility(View.GONE);
             if (originalView != null) {
                 originalView.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
             }
+            if (startZoom(images.get(startIndex), sources.get(startIndex))) return;
             overlayGallery.requestFocus();
+            handler.postDelayed(swapToFullRunnable, 110L);
+        }
+    }
+
+    // Same timing model as the search dock on the main page (DOCK_ANIM_MS / DOCK_MAX_STEP):
+    // linear progress over a fixed time, a per-frame step cap so a slow frame never makes it jump,
+    // and smoothstep applied to staggered phases of the progress.
+    private static final long ZOOM_MS = 210L;
+    private static final float ZOOM_MAX_STEP = 0.12f;
+    private static final int DIM_ALPHA = 0xCC;
+
+    private static float clamp01(float v) {
+        return v < 0f ? 0f : (v > 1f ? 1f : v);
+    }
+
+    private static float smooth(float t) {
+        return t * t * (3f - 2f * t);
+    }
+
+    // Half smoothstep, half linear: the motion still eases a little at both ends but is much
+    // closer to constant speed than plain smoothstep.
+    private static float ease(float t) {
+        return 0.5f * t + 0.5f * smooth(t);
+    }
+
+    // The side clipping of the zoom picture (the strip's padding) is released between the moment
+    // the black backdrop reaches this opacity (absolute alpha 0..1) and the mirror moment, where it
+    // is that far from its final opacity. The curve is symmetric, so opening and closing match.
+    private static final float CLIP_RELEASE_DIM = 0.05f;
+    private static final float DIM_PHASE = 0.6f;
+
+    private int galleryPadW() {
+        return (int) (getResources().getDisplayMetrics().widthPixels * 0.065f);
+    }
+
+    private int galleryPadH() {
+        return (int) (getResources().getDisplayMetrics().heightPixels * 0.065f);
+    }
+
+    private static Bitmap bitmapOf(View v) {
+        if (!(v instanceof ImageView)) return null;
+        android.graphics.drawable.Drawable d = ((ImageView) v).getDrawable();
+        if (d instanceof android.graphics.drawable.BitmapDrawable) {
+            return ((android.graphics.drawable.BitmapDrawable) d).getBitmap();
+        }
+        return null;
+    }
+
+    // Where a FIT_CENTER image of bitmap size b is drawn inside view v, in content coordinates.
+    private boolean fitRect(View v, Bitmap b, ViewGroup content, RectF out) {
+        int bw = b.getWidth();
+        int bh = b.getHeight();
+        if (bw <= 0 || bh <= 0 || v.getWidth() <= 0 || v.getHeight() <= 0) return false;
+        float availW = v.getWidth() - v.getPaddingLeft() - v.getPaddingRight();
+        float availH = v.getHeight() - v.getPaddingTop() - v.getPaddingBottom();
+        if (availW <= 0f || availH <= 0f) return false;
+        v.getLocationInWindow(locA);
+        content.getLocationInWindow(locB);
+        float s = Math.min(availW / bw, availH / bh);
+        float w = bw * s;
+        float h = bh * s;
+        float x = locA[0] - locB[0] + v.getPaddingLeft() + (availW - w) / 2f;
+        float y = locA[1] - locB[1] + v.getPaddingTop() + (availH - h) / 2f;
+        out.set(x, y, x + w, y + h);
+        return true;
+    }
+
+    private void ensureZoomView() {
+        if (zoomView == null) {
+            zoomView = new ZoomView(this);
+            zoomView.setClickable(true);
+            overlayLayout.addView(zoomView, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.FILL_PARENT));
+        }
+    }
+
+    // The part of the screen where the screenshot strip actually shows its thumbnails (the strip
+    // clips its children to its own side paddings). The zoom picture is clipped to it while it is
+    // still near the thumbnail, so it never draws over the page's edge paddings.
+    private RectF thumbClip(View thumb, ViewGroup content, int ch) {
+        if (screenshotsScroll == null || thumb == null || thumb.getParent() == null
+                || thumb.getParent().getParent() != screenshotsScroll) return null;
+        screenshotsScroll.getLocationInWindow(locA);
+        content.getLocationInWindow(locB);
+        float x = locA[0] - locB[0];
+        return new RectF(x + screenshotsScroll.getPaddingLeft(), -ch,
+                x + screenshotsScroll.getWidth() - screenshotsScroll.getPaddingRight(), 2f * ch);
+    }
+
+    private boolean startZoom(String url, View source) {
+        if (source == null || !(overlayLayout.getParent() instanceof ViewGroup)) return false;
+        ViewGroup content = (ViewGroup) overlayLayout.getParent();
+        int cw = content.getWidth();
+        int ch = content.getHeight();
+        // The thumbnail bitmap is shared with the LRU iconCache and can be evicted from it at any
+        // time (lists on other screens push it out), which used to silently skip the animation.
+        // The bitmap the source view is actually showing is always the right one to animate.
+        Bitmap small = bitmapOf(source);
+        if (small == null) small = MainActivity.cachedSmall(this, url);
+        if (small == null) small = MainActivity.cachedFull(this, url);
+        if (small == null || cw <= 0 || ch <= 0) return false;
+        int bw = small.getWidth();
+        int bh = small.getHeight();
+        if (bw <= 0 || bh <= 0) return false;
+
+        RectF from = new RectF();
+        if (!fitRect(source, small, content, from)) return false;
+
+        float availW = cw - 2 * galleryPadW();
+        float availH = ch - 2 * galleryPadH();
+        float ts = Math.min(availW / bw, availH / bh);
+        float tw = bw * ts;
+        float th = bh * ts;
+        float tx = (cw - tw) / 2f;
+        float ty = (ch - th) / 2f;
+        RectF to = new RectF(tx, ty, tx + tw, ty + th);
+
+        ensureZoomView();
+        // The source thumbnail stays where it is: the animation draws a clone of it.
+        overlayDim.setVisibility(View.INVISIBLE);
+        overlayGallery.setVisibility(View.INVISIBLE);
+        zoomView.setVisibility(View.VISIBLE);
+        zoomView.begin(small, from, to, true, thumbClip(source, content, ch), new Runnable() {
+            public void run() {
+                finishZoom();
+            }
+        });
+        return true;
+    }
+
+    private void finishZoom() {
+        if (zoomView == null || zoomView.getVisibility() != View.VISIBLE) return;
+        zoomView.stop();
+        overlayDim.setVisibility(View.VISIBLE);
+        overlayGallery.setVisibility(View.VISIBLE);
+        zoomView.setVisibility(View.GONE);
+        overlayGallery.requestFocus();
+        handler.post(swapToFullRunnable);
+    }
+
+    private boolean startClose() {
+        if (overlayImages == null || overlaySources == null) return false;
+        if (!(overlayLayout.getParent() instanceof ViewGroup)) return false;
+        final Runnable done = new Runnable() {
+            public void run() {
+                finishClose();
+            }
+        };
+
+        if (zoomView != null && zoomView.getVisibility() == View.VISIBLE) {
+            // Still opening: turn around from where the animation currently is.
+            closing = true;
+            zoomView.reverse(done);
+            return true;
+        }
+
+        ViewGroup content = (ViewGroup) overlayLayout.getParent();
+        int pos = overlayGallery.getSelectedItemPosition();
+        if (pos < 0 || pos >= overlayImages.size() || pos >= overlaySources.size()) return false;
+        View child = overlayGallery.getSelectedView();
+        if (child == null) {
+            child = overlayGallery.getChildAt(pos - overlayGallery.getFirstVisiblePosition());
+        }
+        Bitmap cur = bitmapOf(child);
+        if (cur == null) return false;
+
+        View thumb = overlaySources.get(pos);
+        Bitmap tb = bitmapOf(thumb);
+        if (tb == null) tb = cur;
+
+        RectF big = new RectF();
+        RectF small = new RectF();
+        if (!fitRect(child, cur, content, big)) return false;
+        if (!fitRect(thumb, tb, content, small)) return false;
+
+        ensureZoomView();
+        closing = true;
+        overlayDim.setVisibility(View.INVISIBLE);
+        overlayGallery.setVisibility(View.INVISIBLE);
+        zoomView.setVisibility(View.VISIBLE);
+        zoomView.begin(cur, small, big, false, thumbClip(thumb, content, content.getHeight()), done);
+        return true;
+    }
+
+    private void resetOverlayState() {
+        if (zoomView != null) {
+            zoomView.stop();
+            zoomView.setVisibility(View.GONE);
+        }
+        if (overlayDim != null) overlayDim.setVisibility(View.VISIBLE);
+        if (overlayGallery != null) overlayGallery.setVisibility(View.VISIBLE);
+    }
+
+    private void finishClose() {
+        closing = false;
+        handler.removeCallbacks(swapToFullRunnable);
+        resetOverlayState();
+        if (overlayLayout != null) overlayLayout.setVisibility(View.GONE);
+        if (originalView != null) {
+            originalView.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
+        }
+    }
+
+    private final class ZoomView extends View {
+        private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
+        private final RectF thumb = new RectF();
+        private final RectF big = new RectF();
+        private final RectF cur = new RectF();
+        private final RectF drawn = new RectF();
+        private final RectF clipThumb = new RectF();
+        private final RectF clipNow = new RectF();
+        private boolean hasClip;
+        private float clipStart;
+        private float clipEnd;
+        private final Rect dirty = new Rect();
+        private Bitmap bmp;
+        private float p;
+        private float goal;
+        private long last;
+        private boolean running;
+        private boolean haveDrawn;
+        private float lastDim = -1f;
+        private Runnable onEnd;
+
+        private final Runnable step = new Runnable() {
+            public void run() {
+                if (!running) return;
+                long now = android.os.SystemClock.uptimeMillis();
+                float dt = (now - last) / (float) ZOOM_MS;
+                if (dt > ZOOM_MAX_STEP) dt = ZOOM_MAX_STEP;
+                last = now;
+                if (p < goal) p = Math.min(goal, p + dt);
+                else if (p > goal) p = Math.max(goal, p - dt);
+                invalidateFrame();
+                if (p != goal) {
+                    Utils.postFrame(ZoomView.this, this);
+                } else {
+                    running = false;
+                    Utils.postFrame(ZoomView.this, endRun);
+                }
+            }
+        };
+
+        private final Runnable endRun = new Runnable() {
+            public void run() {
+                Runnable r = onEnd;
+                onEnd = null;
+                if (r != null) r.run();
+            }
+        };
+
+        ZoomView(Context c) {
+            super(c);
+            setVisibility(View.GONE);
+        }
+
+        // opening: progress 0 (thumbnail) -> 1 (gallery); closing runs the same curve from 1 back to 0.
+        void begin(Bitmap b, RectF thumbRect, RectF bigRect, boolean opening, RectF thumbClipRect, Runnable end) {
+            stop();
+            hasClip = thumbClipRect != null;
+            if (hasClip) {
+                clipThumb.set(thumbClipRect);
+                float share = CLIP_RELEASE_DIM * 255f / DIM_ALPHA;
+                clipStart = pForDim(share);
+                clipEnd = pForDim(1f - share);
+            }
+            bmp = b;
+            thumb.set(thumbRect);
+            big.set(bigRect);
+            onEnd = end;
+            p = opening ? 0f : 1f;
+            goal = opening ? 1f : 0f;
+            haveDrawn = false;
+            lastDim = -1f;
+            last = android.os.SystemClock.uptimeMillis();
+            running = true;
+            invalidate();
+            Utils.postFrame(this, step);
+        }
+
+        void reverse(Runnable end) {
+            removeCallbacks(step);
+            removeCallbacks(endRun);
+            onEnd = end;
+            goal = 0f;
+            last = android.os.SystemClock.uptimeMillis();
+            running = true;
+            Utils.postFrame(this, step);
+        }
+
+        void stop() {
+            running = false;
+            onEnd = null;
+            removeCallbacks(step);
+            removeCallbacks(endRun);
+        }
+
+        private float dimP() {
+            return ease(clamp01(p / DIM_PHASE));
+        }
+
+        // Progress at which the backdrop reaches the given share (0..1) of its full dim (bisection).
+        private float pForDim(float target) {
+            float lo = 0f;
+            float hi = DIM_PHASE;
+            for (int i = 0; i < 20; i++) {
+                float mid = (lo + hi) / 2f;
+                if (ease(mid / DIM_PHASE) < target) lo = mid; else hi = mid;
+            }
+            return hi;
+        }
+
+        private void place(RectF out) {
+            float px = ease(clamp01(p / 0.6f));
+            float py = ease(clamp01((p - 0.2f) / 0.8f));
+            float ps = ease(clamp01(p / 0.85f));
+            float w = thumb.width() + (big.width() - thumb.width()) * ps;
+            float h = thumb.height() + (big.height() - thumb.height()) * ps;
+            float cx = thumb.centerX() + (big.centerX() - thumb.centerX()) * px;
+            float cy = thumb.centerY() + (big.centerY() - thumb.centerY()) * py;
+            out.set(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f);
+        }
+
+        // While the dim is still changing the whole screen has to be redrawn; once it has settled
+        // only the area the picture moved through is invalidated, which is what keeps this cheap
+        // on old software-rendered devices.
+        private void invalidateFrame() {
+            float d = dimP();
+            if (!haveDrawn || d != lastDim) {
+                invalidate();
+                return;
+            }
+            place(cur);
+            dirty.set((int) Math.min(cur.left, drawn.left) - 2, (int) Math.min(cur.top, drawn.top) - 2,
+                    (int) Math.max(cur.right, drawn.right) + 3, (int) Math.max(cur.bottom, drawn.bottom) + 3);
+            invalidate(dirty);
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            if (bmp == null) return;
+            float d = dimP();
+            if (d > 0f) c.drawColor(((int) (DIM_ALPHA * d + 0.5f)) << 24);
+            place(cur);
+            float k = 1f;
+            if (hasClip) {
+                // The strip's side paddings are ignored more and more, spreading outwards from the
+                // strip, but only once the backdrop is visible; when fully released nothing clips.
+                float p0 = clipStart;
+                k = ease(clamp01((p - p0) / (clipEnd - p0)));
+            }
+            if (hasClip && k < 1f) {
+                clipNow.set(clipThumb.left + (0f - clipThumb.left) * k, clipThumb.top + (0f - clipThumb.top) * k,
+                        clipThumb.right + (getWidth() - clipThumb.right) * k,
+                        clipThumb.bottom + (getHeight() - clipThumb.bottom) * k);
+                c.save();
+                c.clipRect(clipNow);
+                c.drawBitmap(bmp, null, cur, paint);
+                c.restore();
+            } else {
+                c.drawBitmap(bmp, null, cur, paint);
+            }
+            drawn.set(cur);
+            haveDrawn = true;
+            lastDim = d;
+        }
+    }
+
+    private void startFullImageSequence() {
+        final ArrayList<String> shots = appScreenshots == null ? new ArrayList<String>() : new ArrayList<String>(appScreenshots);
+        final String icon = (appIconList != null && appIconList.size() > 0) ? appIconList.get(0) : null;
+        final java.util.concurrent.CountDownLatch latch = thumbsLatch;
+        final Context appCtx = getApplicationContext();
+        Thread t = new Thread(new Runnable() {
+            public void run() {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                try {
+                    if (latch != null) latch.await(20, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    return;
+                }
+                for (int i = 0; i < shots.size(); i++) {
+                    if (isFinishing()) return;
+                    MainActivity.loadFullSync(appCtx, shots.get(i));
+                }
+                if (isFinishing()) return;
+                if (icon != null) MainActivity.loadFullSync(appCtx, icon);
+            }
+        });
+        t.start();
+    }
+
+    private void refreshOverlayImages() {
+        if (overlayGallery == null || overlayImages == null) return;
+        int first = overlayGallery.getFirstVisiblePosition();
+        int count = overlayGallery.getChildCount();
+        for (int i = 0; i < count; i++) {
+            View child = overlayGallery.getChildAt(i);
+            int pos = first + i;
+            if (child instanceof ImageView && pos >= 0 && pos < overlayImages.size()) {
+                MainActivity.swapToFull((ImageView) child, overlayImages.get(pos), 0);
+            }
         }
     }
 
     private void closeOverlay() {
-        if (overlayLayout != null && overlayLayout.getVisibility() == View.VISIBLE) {
-            overlayLayout.setVisibility(View.GONE);
-            if (ghostTitle != null) ghostTitle.setVisibility(View.VISIBLE);
-            if (originalView != null) {
-                originalView.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
-            }
+        if (overlayLayout == null || overlayLayout.getVisibility() != View.VISIBLE) return;
+        if (closing) {
+            finishClose();
+            return;
         }
+        handler.removeCallbacks(swapToFullRunnable);
+        if (!startClose()) finishClose();
     }
 
     @Override
@@ -597,18 +1056,15 @@ public class DetailsActivity extends Activity {
                 img.setLayoutParams(new Gallery.LayoutParams(ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.FILL_PARENT));
                 img.setScaleType(ImageView.ScaleType.FIT_CENTER);
 
-                int screenW = getResources().getDisplayMetrics().widthPixels;
-                int screenH = getResources().getDisplayMetrics().heightPixels;
-                int paddingW = (int) (screenW * 0.065f);
-                int paddingH = (int) (screenH * 0.065f);
+                int paddingW = galleryPadW();
+                int paddingH = galleryPadH();
                 img.setPadding(paddingW, paddingH, paddingW, paddingH);
             } else {
                 img = (ImageView) convertView;
             }
 
-            img.setImageResource(android.R.color.transparent);
             String url = overlayImages.get(position);
-            MainActivity.loadBannerImage(url, img, true);
+            MainActivity.showFullOrSmall(img, url, overlayShowFull || position == overlayStartIndex);
 
             return img;
         }
@@ -638,6 +1094,9 @@ public class DetailsActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         FileLogger.i(Utils.TAG, "DetailsActivity.onDestroy");
+        handler.removeCallbacks(swapToFullRunnable);
+        if (zoomView != null) zoomView.stop();
+        MainActivity.clearFullCache();
         if (pendingReviewsAccountCheck != null) {
             pendingReviewsAccountCheck.cancel();
             pendingReviewsAccountCheck = null;
@@ -851,7 +1310,7 @@ public class DetailsActivity extends Activity {
         }
     }
 
-    private static final class NoAutoScrollScrollView extends ScrollView {
+    private static final class NoAutoScrollScrollView extends TitleScrollView {
         NoAutoScrollScrollView(Context context) {
             super(context);
         }

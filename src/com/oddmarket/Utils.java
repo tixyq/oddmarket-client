@@ -4,13 +4,11 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
-import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
 import android.webkit.WebSettings;
@@ -34,7 +32,6 @@ public final class Utils {
     public static String deviceCountry = "";
 
     public static final int HOME_ID = 0x0102002c;
-    public static final int SHOW_AS_ACTION_ALWAYS = 2;
     public static final int SHOW_AS_ACTION_NEVER = 0;
 
     private static final int FROYO = 8;
@@ -102,16 +99,6 @@ public final class Utils {
         return false;
     }
 
-    public static void disableOverScroll(View view) {
-        try {
-            Method m = View.class.getMethod("setOverScrollMode", int.class);
-            Field overScrollNeverField = View.class.getField("OVER_SCROLL_NEVER");
-            m.invoke(view, overScrollNeverField.getInt(null));
-        } catch (Exception e) {
-            FileLogger.w(TAG, "setOverScrollMode not available", e);
-        }
-    }
-
     private static final Method APPLY_METHOD;
     static {
         Method m;
@@ -121,6 +108,20 @@ public final class Utils {
             m = null;
         }
         APPLY_METHOD = m;
+    }
+
+    public static void postFrame(View v, Runnable r) {
+        if (v == null) return;
+        if (android.os.Build.VERSION.SDK_INT >= 16) {
+            v.postOnAnimation(r);
+        } else {
+            v.postDelayed(r, 16L);
+        }
+    }
+
+    public static boolean isBlurEnabled(Context context) {
+        return context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+                .getBoolean("blur_enabled", android.os.Build.VERSION.SDK_INT > 8);
     }
 
     public static void savePrefs(SharedPreferences.Editor editor) {
@@ -133,19 +134,6 @@ public final class Utils {
             }
         }
         editor.commit();
-    }
-
-    public static void forceShowOverflowMenu(Activity activity) {
-        try {
-            android.view.ViewConfiguration config = android.view.ViewConfiguration.get(activity);
-            Field menuKeyField = android.view.ViewConfiguration.class.getDeclaredField("sHasPermanentMenuKey");
-            if (menuKeyField != null) {
-                menuKeyField.setAccessible(true);
-                menuKeyField.setBoolean(config, false);
-            }
-        } catch (Exception e) {
-            Log.d(TAG, "Failed to force-show overflow menu", e);
-        }
     }
 
     public static void setTextColorById(Activity activity, int id, int color) {
@@ -235,59 +223,6 @@ public final class Utils {
                 FileLogger.w(TAG, "Could not disable WebView display zoom controls", e);
             }
         }
-    }
-
-    private interface ActionBarUse {
-        void run(Object actionBar) throws Exception;
-    }
-
-    private static void withActionBar(Activity activity, String failureLogMessage, ActionBarUse use) {
-        if (android.os.Build.VERSION.SDK_INT < 11) return;
-        try {
-            Method getActionBarMethod = Activity.class.getMethod("getActionBar");
-            Object actionBar = getActionBarMethod.invoke(activity);
-            if (actionBar != null) {
-                use.run(actionBar);
-            }
-        } catch (Exception e) {
-            FileLogger.w(TAG, failureLogMessage, e);
-        }
-    }
-
-    public static void enableActionBarUpButton(Activity activity) {
-        withActionBar(activity, "Could not enable action bar Up button", new ActionBarUse() {
-            public void run(Object actionBar) throws Exception {
-                Method setHomeMethod = actionBar.getClass().getMethod("setDisplayHomeAsUpEnabled", boolean.class);
-                setHomeMethod.invoke(actionBar, true);
-            }
-        });
-        hideActionBarIcon(activity);
-    }
-
-    public static void hideActionBarIcon(Activity activity) {
-        withActionBar(activity, "Could not hide action bar icon", new ActionBarUse() {
-            public void run(Object actionBar) throws Exception {
-                try {
-                    Method setDisplayShowHome = actionBar.getClass()
-                            .getMethod("setDisplayShowHomeEnabled", boolean.class);
-                    setDisplayShowHome.invoke(actionBar, false);
-                } catch (Exception e) {
-                    FileLogger.w(TAG, "Could not disable action bar home icon", e);
-                }
-                try {
-                    Method setIcon = actionBar.getClass().getMethod("setIcon", int.class);
-                    setIcon.invoke(actionBar, android.R.color.transparent);
-                } catch (Exception e) {
-                    FileLogger.w(TAG, "Could not clear action bar icon", e);
-                }
-                try {
-                    Method setLogo = actionBar.getClass().getMethod("setLogo", int.class);
-                    setLogo.invoke(actionBar, android.R.color.transparent);
-                } catch (Exception e) {
-                    FileLogger.w(TAG, "Could not clear action bar logo", e);
-                }
-            }
-        });
     }
 
     public static void refreshOptionsMenu(Activity activity) {

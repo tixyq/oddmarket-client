@@ -9,7 +9,6 @@
 
     <string name="signed_in_as">Signed in as %1$s</string>
     <string name="search_hint">Search...</string>
-    <string name="btn_clear">X</string>
     <string name="tab_apps">Apps</string>
     <string name="tab_games">Games</string>
     <string name="tab_all">All</string>
@@ -42,7 +41,6 @@
     <string name="menu_share">Share</string>
     <string name="share_chooser_title">Share via...</string>
     <string name="menu_uninstall">Uninstall</string>
-    <string name="toast_app_not_installed">App is not installed</string>
     <string name="toast_cannot_uninstall_app">Cannot uninstall application</string>
     <string name="toast_root_install_success">Installed</string>
     <string name="toast_root_update_success">Updated</string>
@@ -73,14 +71,15 @@
     <string name="toast_no_browser_found">No browser found</string>
     <string name="settings_rus_fix_label">Russian URL fix</string>
     <string name="settings_legacy_download_label">Legacy Download</string>
+    <string name="settings_blur_label">Enable Blur</string>
     <string name="settings_send_log_label">Send log</string>
     <string name="settings_request_root_label">Request root access</string>
     <string name="toast_no_log_file">No log file yet</string>
     <string name="toast_no_email_app_found">No app found to send the log</string>
     <string name="settings_disclaimer">Oddmarket is a retro app and game store for old Android devices. All content is provided for informational purposes only. The administration is not responsible for third-party software.</string>
-    <string name="settings_telegram_label">Telegram community – </string>
+    <string name="settings_telegram_label">"Telegram community – "</string>
     <string name="settings_telegram_link">t.me/daom38</string>
-    <string name="settings_admin_label">Administration – </string>
+    <string name="settings_admin_label">"Administration – "</string>
     <string name="settings_admin_link">t.me/tixyq</string>
 
     <string name="settings_caption_general">General</string>

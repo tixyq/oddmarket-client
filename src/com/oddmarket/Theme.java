@@ -55,7 +55,7 @@ public class Theme {
         }
     }
 
-    private static boolean isDark() {
+    public static boolean isDark() {
         return CURRENT == DARK;
     }
 
@@ -85,10 +85,6 @@ public class Theme {
 
     public static int buttonFocused() {
         return color(R.color.button_focused_light, R.color.button_focused_dark);
-    }
-
-    public static int editTextNormal() {
-        return color(R.color.edittext_normal_light, R.color.edittext_normal_dark);
     }
 
     public static int editTextFocused() {
@@ -170,6 +166,7 @@ public class Theme {
         private static final float[] EDGE_ALPHA = {0f, 0.45f, 0.85f, 1f, 1f};
         private static final float FEATHER_DP = 5f;
         private static final float FEATHER_FRACTION = 0.15f;
+        private static final float SQUARE_ALPHA = 0.8f;
 
         private final boolean round;
         private final int color;
@@ -183,6 +180,7 @@ public class Theme {
 
         SoftHighlight(int baseColor, int glowColor, boolean round) {
             this.round = round;
+            if (!round) glowColor = withAlpha(glowColor, SQUARE_ALPHA);
             this.color = glowColor;
             this.density = (appContext != null)
                     ? appContext.getResources().getDisplayMetrics().density : 1f;
@@ -343,12 +341,97 @@ public class Theme {
         }
     }
 
-    public static android.graphics.drawable.StateListDrawable editTextBackground() {
-        android.graphics.drawable.StateListDrawable selector = new android.graphics.drawable.StateListDrawable();
-        int normal = editTextNormal();
-        selector.addState(new int[]{android.R.attr.state_focused}, new SoftHighlight(normal, editTextFocused(), false));
-        selector.addState(new int[]{}, flatShape(normal));
-        return selector;
+    public static SearchBoxBackground searchBoxBackground() {
+        return new SearchBoxBackground();
+    }
+
+    public static final class SearchBoxBackground extends android.graphics.drawable.Drawable {
+        private static final float RADIUS_DP = 3f;
+
+        private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.RectF rect = new android.graphics.RectF();
+        private final float radiusPx;
+        private final int pageColor;
+        private final int pageFocused;
+        private final int dockColor;
+        private final int dockFocused;
+        private float dock = 0f;
+        private boolean focused = false;
+
+        SearchBoxBackground() {
+            radiusPx = RADIUS_DP * ((appContext != null)
+                    ? appContext.getResources().getDisplayMetrics().density : 1f);
+            if (isDark()) {
+                pageColor = 0x10FFFFFF;
+                pageFocused = editTextFocused();
+                dockColor = 0x38000000;
+                dockFocused = (editTextFocused() & 0x00FFFFFF) | 0x66000000;
+            } else {
+                pageColor = 0x0C000000;
+                pageFocused = editTextFocused();
+                dockColor = 0x1C000000;
+                dockFocused = 0x263D7FCC;
+            }
+        }
+
+        public void setDock(float p) {
+            if (p < 0f) p = 0f;
+            if (p > 1f) p = 1f;
+            if (p == dock) return;
+            dock = p;
+            invalidateSelf();
+        }
+
+        private static int lerp(int a, int b, float t) {
+            int ar = (a >>> 24), br = (b >>> 24);
+            int al = (int) (ar + (br - ar) * t + 0.5f);
+            int r = (int) (((a >> 16) & 0xFF) + ((((b >> 16) & 0xFF) - ((a >> 16) & 0xFF)) * t) + 0.5f);
+            int g = (int) (((a >> 8) & 0xFF) + ((((b >> 8) & 0xFF) - ((a >> 8) & 0xFF)) * t) + 0.5f);
+            int bl = (int) ((a & 0xFF) + (((b & 0xFF) - (a & 0xFF)) * t) + 0.5f);
+            return (al << 24) | (r << 16) | (g << 8) | bl;
+        }
+
+        @Override
+        public void draw(android.graphics.Canvas c) {
+            paint.setColor(lerp(focused ? pageFocused : pageColor, focused ? dockFocused : dockColor, dock));
+            android.graphics.Rect b = getBounds();
+            float r = radiusPx * dock;
+            if (r < 0.5f) {
+                c.drawRect(b, paint);
+            } else {
+                rect.set(b);
+                c.drawRoundRect(rect, r, r, paint);
+            }
+        }
+
+        @Override
+        public boolean isStateful() {
+            return true;
+        }
+
+        @Override
+        protected boolean onStateChange(int[] state) {
+            boolean f = false;
+            for (int i = 0; i < state.length; i++) {
+                if (state[i] == android.R.attr.state_focused) f = true;
+            }
+            if (f == focused) return false;
+            focused = f;
+            return true;
+        }
+
+        @Override
+        public void setAlpha(int alpha) {
+        }
+
+        @Override
+        public void setColorFilter(android.graphics.ColorFilter cf) {
+        }
+
+        @Override
+        public int getOpacity() {
+            return android.graphics.PixelFormat.TRANSLUCENT;
+        }
     }
 
     public static int dpToPx(android.content.Context context, int dp) {

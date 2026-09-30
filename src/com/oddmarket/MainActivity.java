@@ -49,11 +49,23 @@ public class MainActivity extends Activity {
     protected void attachBaseContext(Context newBase) {
         super.attachBaseContext(Utils.applyLocale(newBase));
     }
-    private ScrollView scrollView;
+    private TitleScrollView scrollView;
     private ListView listView;
     private EditText searchBox;
     private Button tabApps, tabGames;
     private TextView statusTextView;
+    private TextView errorOverlay;
+    private boolean errorOverlayShown = false;
+    private final Runnable errorHideRunnable = new Runnable() {
+        public void run() {
+            if (!errorOverlayShown) return;
+            errorOverlayShown = false;
+            if (errorOverlay != null) errorOverlay.setVisibility(View.GONE);
+            if (listView != null && statusTextView != null && statusTextView.getVisibility() != View.VISIBLE) {
+                listView.setVisibility(View.VISIBLE);
+            }
+        }
+    };
     private TextView accountBadgeView;
 
     private static final int ID_BANNER = Utils.generateViewId();
@@ -121,7 +133,11 @@ public class MainActivity extends Activity {
     };
 
     private static final class IconCache {
-        private static final int MAX_CACHE_BYTES = 6 * 1024 * 1024;
+        private final int maxBytes;
+
+        IconCache(int maxBytes) {
+            this.maxBytes = maxBytes;
+        }
 
         private final LinkedHashMap<String, Bitmap> map =
                 new LinkedHashMap<String, Bitmap>(16, 0.75f, true);
@@ -130,6 +146,11 @@ public class MainActivity extends Activity {
         private static int sizeOf(Bitmap b) {
             if (b == null) return 0;
             return b.getRowBytes() * b.getHeight();
+        }
+
+        synchronized void clear() {
+            map.clear();
+            currentBytes = 0;
         }
 
         synchronized boolean containsKey(String key) {
@@ -148,7 +169,7 @@ public class MainActivity extends Activity {
 
         private void trim() {
             Iterator<Map.Entry<String, Bitmap>> it = map.entrySet().iterator();
-            while (currentBytes > MAX_CACHE_BYTES && it.hasNext()) {
+            while (currentBytes > maxBytes && it.hasNext()) {
                 Map.Entry<String, Bitmap> eldest = it.next();
                 currentBytes -= sizeOf(eldest.getValue());
                 it.remove();
@@ -156,7 +177,8 @@ public class MainActivity extends Activity {
         }
     }
 
-    public static final IconCache iconCache = new IconCache();
+    public static final IconCache iconCache = new IconCache(6 * 1024 * 1024);
+    private static final IconCache fullCache = new IconCache(fullCacheLimit());
 
     private class AspectImageView extends ImageView {
         public AspectImageView(Context context) {
@@ -181,11 +203,10 @@ public class MainActivity extends Activity {
     private FrameLayout rootLayout;
     private GhostTitle ghostTitle;
     private DownloadUi downloadUi;
-    private View ghostSpacer;
 
     private ViewGroup searchDock;
     private View searchPlaceholder;
-    private int dockRightInsetPx;
+    private Theme.SearchBoxBackground searchBg;
     private boolean searchDockShown = false;
     private final int[] dockLocA = new int[2];
     private final int[] dockLocB = new int[2];
@@ -282,7 +303,6 @@ public class MainActivity extends Activity {
 
         LinearLayout originalView = (LinearLayout) LayoutInflater.from(this).inflate(R.layout.main, null);
         originalView.setBackgroundColor(Theme.windowBackground());
-        ghostSpacer = GhostTitle.insertSpacer(originalView, Theme.tabRowBackground());
         View headerView = originalView.findViewById(R.id.main_header);
         if (headerView != null) headerView.setBackgroundColor(Theme.tabRowBackground());
 
@@ -301,8 +321,8 @@ public class MainActivity extends Activity {
         }
         updateAccountBadge(AccountManager.cachedNickname(this));
 
-        scrollView = new ScrollView(this);
-        scrollView.setBackgroundColor(0x00000000);
+        scrollView = new TitleScrollView(this);
+        scrollView.setBackgroundColor(Theme.tabRowBackground());
         scrollView.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.FILL_PARENT));
         scrollView.setFillViewport(true);
 
@@ -318,7 +338,8 @@ public class MainActivity extends Activity {
 
         statusTextView = new TextView(this);
         LinearLayout.LayoutParams tvParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.FILL_PARENT, 0, 1.0f);
+                ViewGroup.LayoutParams.WRAP_CONTENT, 0, 1.0f);
+        tvParams.gravity = android.view.Gravity.CENTER_HORIZONTAL;
         statusTextView.setLayoutParams(tvParams);
         statusTextView.setGravity(android.view.Gravity.CENTER);
         statusTextView.setMinimumHeight(Theme.dpToPx(this, 96));
@@ -330,6 +351,17 @@ public class MainActivity extends Activity {
         originalView.addView(statusTextView);
 
         rootLayout.addView(scrollView, 0);
+
+        errorOverlay = new TextView(this);
+        errorOverlay.setGravity(android.view.Gravity.CENTER);
+        errorOverlay.setPadding(Theme.dpToPx(this, 16), 0, Theme.dpToPx(this, 16), 0);
+        errorOverlay.setTextSize(18);
+        errorOverlay.setTextColor(Theme.textSecondary());
+        errorOverlay.setCompoundDrawablePadding(15);
+        errorOverlay.setVisibility(View.GONE);
+        rootLayout.addView(errorOverlay, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL));
 
         setContentView(rootLayout);
         Theme.applyFonts(rootLayout);
@@ -351,14 +383,17 @@ public class MainActivity extends Activity {
         searchBox = (EditText) findViewById(R.id.search_box);
         searchBox.setTextColor(Theme.textPrimary());
         searchBox.setHintTextColor(Theme.textHint());
-        searchBox.setBackgroundDrawable(Theme.editTextBackground());
+        searchBg = Theme.searchBoxBackground();
+        searchBox.setBackgroundDrawable(searchBg);
         searchBox.setPadding(
                 Theme.dpToPx(this, 8), Theme.dpToPx(this, 6),
                 Theme.dpToPx(this, 40), Theme.dpToPx(this, 6));
 
         searchClearContainer = findViewById(R.id.search_clear_container);
-        TextView searchClearText = (TextView) findViewById(R.id.search_clear);
-        if (searchClearText != null) searchClearText.setTextColor(Theme.textPrimary());
+        View searchClearIcon = findViewById(R.id.search_clear);
+        if (searchClearIcon instanceof CrossIconView) {
+            ((CrossIconView) searchClearIcon).setColor(Theme.textPrimary());
+        }
         Theme.applySoftRows(searchClearContainer);
 
         tabApps = (Button) findViewById(R.id.tab_apps);
@@ -492,16 +527,13 @@ public class MainActivity extends Activity {
         header.addView(searchPlaceholder, index,
                 new LinearLayout.LayoutParams(ViewGroup.LayoutParams.FILL_PARENT, h));
 
-        wrapper.setBackgroundColor(Theme.tabRowBackground());
+        wrapper.setBackgroundDrawable(null);
         wrapper.setVisibility(View.INVISIBLE);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 android.view.Gravity.TOP);
         content.addView(wrapper, lp);
         searchDock = wrapper;
-
-        float d = dm.density;
-        dockRightInsetPx = (int) (((dm.widthPixels / d <= 320f ? 44 : 48) + 4) * d + 0.5f);
 
         android.view.ViewTreeObserver vto = content.getViewTreeObserver();
         vto.addOnScrollChangedListener(new android.view.ViewTreeObserver.OnScrollChangedListener() {
@@ -516,7 +548,54 @@ public class MainActivity extends Activity {
         });
     }
 
+    private static final int DOCK_SIDE_GAP_DP = 8;
+    private static final int DOCK_BUTTON_GAP_DP = 2;
+    private static final int DOCK_HYSTERESIS_DP = 2;
+    private static final long DOCK_ANIM_MS = 280L;
+    private static final float DOCK_MAX_STEP = 0.12f;
+    private boolean dockSyncing = false;
+
+    private boolean dockTarget = false;
+    private float dockA = 0f;
+    private long dockAnimLast = 0L;
+    private boolean dockAnimRunning = false;
+    private final Runnable dockAnimStep = new Runnable() {
+        public void run() {
+            long now = android.os.SystemClock.uptimeMillis();
+            float dt = (now - dockAnimLast) / (float) DOCK_ANIM_MS;
+            if (dt > DOCK_MAX_STEP) dt = DOCK_MAX_STEP;
+            dockAnimLast = now;
+            float goal = dockTarget ? 1f : 0f;
+            if (dockA < goal) dockA = Math.min(goal, dockA + dt);
+            else if (dockA > goal) dockA = Math.max(goal, dockA - dt);
+            syncSearchDock();
+            if (dockA != (dockTarget ? 1f : 0f) && searchDock != null) {
+                Utils.postFrame(searchDock, this);
+            } else {
+                dockAnimRunning = false;
+            }
+        }
+    };
+
+    private static float clamp01(float v) {
+        return v < 0f ? 0f : (v > 1f ? 1f : v);
+    }
+
+    private static float smooth(float t) {
+        return t * t * (3f - 2f * t);
+    }
+
     private void syncSearchDock() {
+        if (dockSyncing) return;
+        dockSyncing = true;
+        try {
+            syncSearchDockImpl();
+        } finally {
+            dockSyncing = false;
+        }
+    }
+
+    private void syncSearchDockImpl() {
         if (searchDock == null || searchPlaceholder == null) return;
         if (searchPlaceholder.getWidth() == 0) return;
         ViewGroup content = (ViewGroup) searchDock.getParent();
@@ -526,28 +605,63 @@ public class MainActivity extends Activity {
         content.getLocationInWindow(dockLocB);
         int raw = dockLocA[1] - dockLocB[1];
 
+        float density = getResources().getDisplayMetrics().density;
         int bar = GhostTitle.heightPx(this);
+        int hyst = (int) (DOCK_HYSTERESIS_DP * density + 0.5f);
+
+        if (!dockTarget && raw < bar - hyst) dockTarget = true;
+        else if (dockTarget && raw > bar + hyst) dockTarget = false;
+        if (dockA != (dockTarget ? 1f : 0f) && !dockAnimRunning) {
+            dockAnimRunning = true;
+            dockAnimLast = android.os.SystemClock.uptimeMillis();
+            Utils.postFrame(searchDock, dockAnimStep);
+        }
+
         int h = searchDock.getHeight();
         if (h <= 0) h = searchPlaceholder.getHeight();
         int slot = Math.max(0, (bar - h) / 2);
 
-        int top = Math.max(slot, raw);
-        int zone = bar - slot;
-        float p;
-        if (zone <= 0) {
-            p = raw <= slot ? 1f : 0f;
-        } else {
-            p = 1f - Math.max(0f, Math.min(1f, (raw - slot) / (float) zone));
+        float insetsP = smooth(clamp01(dockA / 0.6f));
+        float vertP = smooth(clamp01((dockA - 0.2f) / 0.8f));
+
+        int topBase = Math.max(raw, bar - hyst);
+        int top = (int) (topBase + (slot - topBase) * vertP + 0.5f);
+
+        int sideGap = (int) (DOCK_SIDE_GAP_DP * density + 0.5f);
+        int leftFull = sideGap;
+        int rightFull = (int) (DOCK_BUTTON_GAP_DP * density + 0.5f);
+        if (ghostTitle != null) {
+            leftFull = Math.max(leftFull, ghostTitle.getLeftReservePx());
+            rightFull += ghostTitle.getRightReservePx();
         }
-        int right = (int) (dockRightInsetPx * p + 0.5f);
+        int sbW = scrollView != null ? scrollView.scrollbarWidthPx() : 0;
+        if (rightFull < sbW) rightFull = sbW;
+        int left = (int) (leftFull * insetsP + 0.5f);
+        int right = (int) (sbW + (rightFull - sbW) * insetsP + 0.5f);
+
+        if (searchBg != null) searchBg.setDock(insetsP);
+        if (ghostTitle != null) ghostTitle.setSearchDockProgress(dockA);
 
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) searchDock.getLayoutParams();
-        if (lp.topMargin != top || lp.rightMargin != right) {
-            lp.topMargin = top;
-            lp.rightMargin = right;
-            searchDock.setLayoutParams(lp);
-        }
+        boolean changed = lp.topMargin != top || lp.leftMargin != left || lp.rightMargin != right;
         int realH = searchDock.getHeight();
+        if (changed) {
+            lp.topMargin = top;
+            lp.leftMargin = left;
+            lp.rightMargin = right;
+            int cw = content.getWidth();
+            if (realH > 0 && cw > 0) {
+                int w = Math.max(0, cw - left - right);
+                if (searchDock.getWidth() != w) {
+                    searchDock.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
+                            View.MeasureSpec.makeMeasureSpec(realH, View.MeasureSpec.EXACTLY));
+                }
+                searchDock.layout(left, top, left + w, top + realH);
+            } else {
+                searchDock.setLayoutParams(lp);
+            }
+        }
+        realH = searchDock.getHeight();
         if (realH > 0 && searchPlaceholder.getHeight() != realH) {
             ViewGroup.LayoutParams plp = searchPlaceholder.getLayoutParams();
             plp.height = realH;
@@ -681,6 +795,8 @@ public class MainActivity extends Activity {
 
     private void reloadAll() {
         currentPage = 1;
+        // Refresh must also re-check the ratings, so drop the throttle for the next fetchRatings().
+        lastRatingsOkMs = 0;
         loadData(true);
         loadBanners();
         accountRefreshDeferred = true;
@@ -837,8 +953,34 @@ public class MainActivity extends Activity {
         deepLinkPackage = null;
     }
 
+    private void showTransientError(int textResId, int iconResId) {
+        if (errorOverlay == null || listView == null || scrollView == null) return;
+        errorOverlay.removeCallbacks(errorHideRunnable);
+        int listTop = scrollView.getPaddingTop() + listView.getTop() - scrollView.getScrollY();
+        int y = Math.max(listTop, GhostTitle.heightPx(this)) + Theme.dpToPx(this, 24);
+        int rootH = rootLayout != null ? rootLayout.getHeight() : 0;
+        if (rootH > 0) y = Math.min(y, Math.max(0, rootH - Theme.dpToPx(this, 96)));
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) errorOverlay.getLayoutParams();
+        lp.topMargin = y;
+        errorOverlay.setLayoutParams(lp);
+        errorOverlay.setText(textResId);
+        errorOverlay.setCompoundDrawablesWithIntrinsicBounds(iconResId, 0, 0, 0);
+        listView.setVisibility(View.INVISIBLE);
+        errorOverlay.setVisibility(View.VISIBLE);
+        errorOverlayShown = true;
+        errorOverlay.postDelayed(errorHideRunnable, 2000);
+    }
+
+    private void cancelTransientError() {
+        if (errorOverlay == null || !errorOverlayShown) return;
+        errorOverlay.removeCallbacks(errorHideRunnable);
+        errorOverlayShown = false;
+        errorOverlay.setVisibility(View.GONE);
+    }
+
     private void showStatus(int textResId, int iconResId) {
         if (statusTextView == null) return;
+        cancelTransientError();
         statusTextView.setText(textResId);
         statusTextView.setCompoundDrawablesWithIntrinsicBounds(iconResId, 0, 0, 0);
         statusTextView.setVisibility(View.VISIBLE);
@@ -858,6 +1000,7 @@ public class MainActivity extends Activity {
 
     private void hideStatus() {
         if (statusTextView == null) return;
+        cancelTransientError();
         statusTextView.setVisibility(View.GONE);
         showListViewPreservingScroll();
     }
@@ -923,24 +1066,14 @@ public class MainActivity extends Activity {
                     } else {
                         runOnUiThread(new Runnable() {
                             public void run() {
-                                if (statusTextView != null) {
-                                    showStatus(R.string.status_app_not_found, 0);
-                                    statusTextView.postDelayed(new Runnable() {
-                                        public void run() { hideStatus(); }
-                                    }, 2000);
-                                }
+                                showTransientError(R.string.status_app_not_found, 0);
                             }
                         });
                     }
                 } catch (Exception e) {
                     runOnUiThread(new Runnable() {
                         public void run() {
-                            if (statusTextView != null) {
-                                showStatus(R.string.status_couldnt_load, R.drawable.ic_network_error);
-                                statusTextView.postDelayed(new Runnable() {
-                                    public void run() { hideStatus(); }
-                                }, 2000);
-                            }
+                            showTransientError(R.string.status_couldnt_load, R.drawable.ic_network_error);
                         }
                     });
                 }
@@ -1163,6 +1296,156 @@ public class MainActivity extends Activity {
         }
         DisplayMetrics dm = img.getContext().getResources().getDisplayMetrics();
         return Math.max(dm.widthPixels, dm.heightPixels);
+    }
+
+    private static int fullCacheLimit() {
+        long max = Runtime.getRuntime().maxMemory();
+        long limit = Math.min(12L * 1024 * 1024, max / 4);
+        return (int) Math.max(3L * 1024 * 1024, limit);
+    }
+
+    public static void clearFullCache() {
+        fullCache.clear();
+    }
+
+    public static void loadSized(final String rawUrl, final ImageView img, final int maxDimPx,
+                                 final java.util.concurrent.CountDownLatch latch) {
+        if (rawUrl == null || rawUrl.length() == 0) {
+            if (latch != null) latch.countDown();
+            return;
+        }
+        final String url = fixUrl(img.getContext(), rawUrl);
+        img.setTag(url);
+        Bitmap cached = iconCache.get(url);
+        if (cached != null) {
+            img.setImageBitmap(cached);
+            if (latch != null) latch.countDown();
+            return;
+        }
+        imageExecutor.execute(new Runnable() {
+            public void run() {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                final Bitmap bmp = downloadBitmapWithRetry(url, maxDimPx);
+                if (bmp != null) iconCache.put(url, bmp);
+                img.post(new Runnable() {
+                    public void run() {
+                        if (url.equals(img.getTag())) {
+                            if (bmp != null) img.setImageBitmap(bmp);
+                            else img.setImageResource(R.drawable.ic_pic);
+                        }
+                    }
+                });
+                if (latch != null) latch.countDown();
+            }
+        });
+    }
+
+    public static Bitmap cachedFull(Context context, String rawUrl) {
+        if (rawUrl == null || rawUrl.length() == 0) return null;
+        return fullCache.get(fixUrl(context, rawUrl));
+    }
+
+    public static Bitmap cachedSmall(Context context, String rawUrl) {
+        if (rawUrl == null || rawUrl.length() == 0) return null;
+        return iconCache.get(fixUrl(context, rawUrl));
+    }
+
+    public static void prefetchFull(final Context context, final String rawUrl) {
+        if (rawUrl == null || rawUrl.length() == 0) return;
+        if (cachedFull(context, rawUrl) != null) return;
+        imageExecutor.execute(new Runnable() {
+            public void run() {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                loadFullSync(context, rawUrl);
+            }
+        });
+    }
+
+    public static Bitmap loadFullSync(Context context, String rawUrl) {
+        if (rawUrl == null || rawUrl.length() == 0) return null;
+        String url = fixUrl(context, rawUrl);
+        Bitmap b = fullCache.get(url);
+        if (b != null) return b;
+        DisplayMetrics dm = context.getResources().getDisplayMetrics();
+        b = downloadBitmapWithRetry(url, Math.max(dm.widthPixels, dm.heightPixels));
+        if (b != null) fullCache.put(url, b);
+        return b;
+    }
+
+    public static void showFullOrSmall(final ImageView img, final String rawUrl, boolean allowFull) {
+        if (rawUrl == null || rawUrl.length() == 0) return;
+        final Context ctx = img.getContext();
+        final String url = fixUrl(ctx, rawUrl);
+        img.setTag(url);
+        Bitmap full = fullCache.get(url);
+        Bitmap small = iconCache.get(url);
+        if (allowFull && full != null) {
+            img.setImageBitmap(full);
+            return;
+        }
+        if (small != null) {
+            img.setImageBitmap(small);
+        } else if (full != null) {
+            img.setImageBitmap(full);
+            return;
+        } else {
+            img.setImageDrawable(null);
+        }
+        if (!allowFull) return;
+        imageExecutor.execute(new Runnable() {
+            public void run() {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                final Bitmap bmp = loadFullSync(ctx, rawUrl);
+                img.post(new Runnable() {
+                    public void run() {
+                        if (!url.equals(img.getTag())) return;
+                        if (bmp != null) applyFull(img, url, bmp, 0);
+                        else if (img.getDrawable() == null) img.setImageResource(R.drawable.ic_pic);
+                    }
+                });
+            }
+        });
+    }
+
+    public static void swapToFull(final ImageView img, final String rawUrl, final int fadeMs) {
+        if (rawUrl == null || rawUrl.length() == 0) return;
+        final Context ctx = img.getContext();
+        final String url = fixUrl(ctx, rawUrl);
+        img.setTag(url);
+        Bitmap full = fullCache.get(url);
+        if (full != null) {
+            applyFull(img, url, full, fadeMs);
+            return;
+        }
+        imageExecutor.execute(new Runnable() {
+            public void run() {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                final Bitmap bmp = loadFullSync(ctx, rawUrl);
+                if (bmp == null) return;
+                img.post(new Runnable() {
+                    public void run() {
+                        if (url.equals(img.getTag())) applyFull(img, url, bmp, fadeMs);
+                    }
+                });
+            }
+        });
+    }
+
+    private static void applyFull(final ImageView img, final String url, final Bitmap full, int fadeMs) {
+        final android.graphics.drawable.Drawable cur = img.getDrawable();
+        if (fadeMs <= 0 || cur == null) {
+            img.setImageBitmap(full);
+            return;
+        }
+        final android.graphics.drawable.TransitionDrawable td = new android.graphics.drawable.TransitionDrawable(
+                new android.graphics.drawable.Drawable[]{cur, new android.graphics.drawable.BitmapDrawable(full)});
+        img.setImageDrawable(td);
+        td.startTransition(fadeMs);
+        img.postDelayed(new Runnable() {
+            public void run() {
+                if (url.equals(img.getTag()) && img.getDrawable() == td) img.setImageBitmap(full);
+            }
+        }, fadeMs + 32);
     }
 
     public static void loadBannerImage(final String rawUrl, final ImageView img) {
@@ -1493,8 +1776,8 @@ public class MainActivity extends Activity {
         } else {
 
             hideStatus();
-            Toast.makeText(this, R.string.status_couldnt_load, Toast.LENGTH_SHORT).show();
             updateListViewHeight();
+            showTransientError(R.string.status_couldnt_load, R.drawable.ic_network_error);
         }
     }
 

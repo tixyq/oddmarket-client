@@ -9,7 +9,6 @@
 
     <string name="signed_in_as">Вы вошли как %1$s</string>
     <string name="search_hint">Поиск...</string>
-    <string name="btn_clear">X</string>
     <string name="tab_apps">Приложения</string>
     <string name="tab_games">Игры</string>
     <string name="tab_all">Все</string>
@@ -42,7 +41,6 @@
     <string name="menu_share">Поделиться</string>
     <string name="share_chooser_title">Поделиться через...</string>
     <string name="menu_uninstall">Удалить приложение</string>
-    <string name="toast_app_not_installed">Приложение не установлено</string>
     <string name="toast_cannot_uninstall_app">Не удалось удалить приложение</string>
     <string name="toast_root_install_success">Установлено</string>
     <string name="toast_root_update_success">Обновлено</string>
@@ -73,14 +71,15 @@
     <string name="toast_no_browser_found">Браузер не найден</string>
     <string name="settings_rus_fix_label">Фикс российских ссылок</string>
     <string name="settings_legacy_download_label">Устаревшая загрузка</string>
+    <string name="settings_blur_label">Включить размытие</string>
     <string name="settings_send_log_label">Отправить лог</string>
     <string name="settings_request_root_label">Запросить root-доступ</string>
     <string name="toast_no_log_file">Файл лога отсутствует</string>
     <string name="toast_no_email_app_found">Не найдено приложение для отправки лога</string>
     <string name="settings_disclaimer">Oddmarket – это ретро магазин приложений и игр под старые Android устройства. Весь контент предоставлен исключительно в ознакомительных целях. Администрация не несет ответственности за стороннее программное обеспечение.</string>
-    <string name="settings_telegram_label">Телеграм сообщество – </string>
+    <string name="settings_telegram_label">"Телеграм сообщество – "</string>
     <string name="settings_telegram_link">t.me/daom38</string>
-    <string name="settings_admin_label">Администрация – </string>
+    <string name="settings_admin_label">"Администрация – "</string>
     <string name="settings_admin_link">t.me/tixyq</string>
 
     <string name="settings_caption_general">Общие</string>

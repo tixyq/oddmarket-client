@@ -53,14 +53,12 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:contentDescription="@string/desc_search_clear">
-                <TextView
-                    android:textSize="16.0sp"
+                <com.oddmarket.CrossIconView
                     android:id="@+id/search_clear"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/btn_clear"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
                     android:background="@drawable/list_item_selector"
-                android:tag="soft_circle"
+                    android:tag="soft_circle"
                     android:duplicateParentState="true"
                     android:clickable="false"
                     android:focusable="false" />

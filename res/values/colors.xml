@@ -16,9 +16,6 @@
     <color name="button_focused_light">#FFE6F0FC</color>
     <color name="button_focused_dark">#FF1F3651</color>
 
-    <color name="edittext_normal_light">#FFF2F2F2</color>
-    <color name="edittext_normal_dark">#FF262626</color>
-
     <color name="edittext_focused_light">#FFE6F0FC</color>
     <color name="edittext_focused_dark">#FF1F3651</color>
 
