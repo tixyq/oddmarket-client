@@ -72,6 +72,7 @@
     <string name="settings_rus_fix_label">Russian URL fix</string>
     <string name="settings_legacy_download_label">Legacy Download</string>
     <string name="settings_blur_label">Enable Blur</string>
+    <string name="settings_anim_label">Enable Animations</string>
     <string name="settings_send_log_label">Send log</string>
     <string name="settings_request_root_label">Request root access</string>
     <string name="toast_no_log_file">No log file yet</string>
@@ -124,4 +125,6 @@
     <string name="notif_downloading">Downloading...</string>
     <string name="notif_waiting">Waiting to download</string>
     <string name="notif_download_error_format">Download failed: %1$s</string>
+    <string name="perf_blur_off">Blur was turned off automatically to keep things smooth. You can turn it back on in Settings.</string>
+    <string name="perf_anim_off">Animations were turned off automatically to keep things smooth. You can turn them back on in Settings.</string>
 </resources>

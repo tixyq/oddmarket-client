@@ -121,7 +121,13 @@ public final class Utils {
 
     public static boolean isBlurEnabled(Context context) {
         return context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
-                .getBoolean("blur_enabled", android.os.Build.VERSION.SDK_INT > 8);
+                .getBoolean("blur_enabled", PerfGuard.blurDefault());
+    }
+
+    // Defaults depend on the CPU class, see PerfGuard.
+    public static boolean isAnimEnabled(Context context) {
+        return context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+                .getBoolean("anim_enabled", PerfGuard.animDefault());
     }
 
     public static void savePrefs(SharedPreferences.Editor editor) {

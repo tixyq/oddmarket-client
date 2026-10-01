@@ -72,6 +72,7 @@
     <string name="settings_rus_fix_label">Фикс российских ссылок</string>
     <string name="settings_legacy_download_label">Устаревшая загрузка</string>
     <string name="settings_blur_label">Включить размытие</string>
+    <string name="settings_anim_label">Включить анимации</string>
     <string name="settings_send_log_label">Отправить лог</string>
     <string name="settings_request_root_label">Запросить root-доступ</string>
     <string name="toast_no_log_file">Файл лога отсутствует</string>
@@ -124,4 +125,6 @@
     <string name="notif_downloading">Загрузка...</string>
     <string name="notif_waiting">Ожидаем загрузку</string>
     <string name="notif_download_error_format">Ошибка загрузки: %1$s</string>
+    <string name="perf_blur_off">Размытие отключено автоматически для плавной работы. Его можно включить в настройках.</string>
+    <string name="perf_anim_off">Анимации отключены автоматически для плавной работы. Их можно включить в настройках.</string>
 </resources>

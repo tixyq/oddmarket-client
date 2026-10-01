@@ -613,8 +613,10 @@ public class DetailsActivity extends Activity {
     // Same timing model as the search dock on the main page (DOCK_ANIM_MS / DOCK_MAX_STEP):
     // linear progress over a fixed time, a per-frame step cap so a slow frame never makes it jump,
     // and smoothstep applied to staggered phases of the progress.
-    private static final long ZOOM_MS = 210L;
-    private static final float ZOOM_MAX_STEP = 0.12f;
+    private static final long ZOOM_MS = 170L;
+    // Slow frames on old devices may advance the zoom by up to this much, so it still finishes on
+    // time (the old 0.12 cap stretched a 210 ms animation to a second or more at low frame rates).
+    private static final float ZOOM_MAX_STEP = 0.34f;
     private static final int DIM_ALPHA = 0xCC;
 
     private static float clamp01(float v) {
@@ -635,7 +637,7 @@ public class DetailsActivity extends Activity {
     // the black backdrop reaches this opacity (absolute alpha 0..1) and the mirror moment, where it
     // is that far from its final opacity. The curve is symmetric, so opening and closing match.
     private static final float CLIP_RELEASE_DIM = 0.05f;
-    private static final float DIM_PHASE = 0.6f;
+    private static final float DIM_PHASE = 0.5f;
 
     private int galleryPadW() {
         return (int) (getResources().getDisplayMetrics().widthPixels * 0.065f);
@@ -696,6 +698,7 @@ public class DetailsActivity extends Activity {
     }
 
     private boolean startZoom(String url, View source) {
+        if (!Utils.isAnimEnabled(this)) return false;
         if (source == null || !(overlayLayout.getParent() instanceof ViewGroup)) return false;
         ViewGroup content = (ViewGroup) overlayLayout.getParent();
         int cw = content.getWidth();
@@ -747,6 +750,7 @@ public class DetailsActivity extends Activity {
     }
 
     private boolean startClose() {
+        if (!Utils.isAnimEnabled(this)) return false;
         if (overlayImages == null || overlaySources == null) return false;
         if (!(overlayLayout.getParent() instanceof ViewGroup)) return false;
         final Runnable done = new Runnable() {
@@ -919,14 +923,14 @@ public class DetailsActivity extends Activity {
         }
 
         private void place(RectF out) {
-            float px = ease(clamp01(p / 0.6f));
-            float py = ease(clamp01((p - 0.2f) / 0.8f));
-            float ps = ease(clamp01(p / 0.85f));
-            float w = thumb.width() + (big.width() - thumb.width()) * ps;
-            float h = thumb.height() + (big.height() - thumb.height()) * ps;
-            float cx = thumb.centerX() + (big.centerX() - thumb.centerX()) * px;
-            float cy = thumb.centerY() + (big.centerY() - thumb.centerY()) * py;
-            out.set(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f);
+            // One progress for position and size: every edge moves in a straight line from the
+            // thumbnail's exact rectangle to the gallery's, so the picture leaves (and lands on)
+            // the original image precisely, with no sideways swing.
+            float e = ease(clamp01(p));
+            out.set(thumb.left + (big.left - thumb.left) * e,
+                    thumb.top + (big.top - thumb.top) * e,
+                    thumb.right + (big.right - thumb.right) * e,
+                    thumb.bottom + (big.bottom - thumb.bottom) * e);
         }
 
         // While the dim is still changing the whole screen has to be redrawn; once it has settled

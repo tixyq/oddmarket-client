@@ -81,6 +81,7 @@ public class SettingsActivity extends Activity {
         final CheckBox cbRussianDomain = (CheckBox) findViewById(R.id.settings_cb_rus_fix);
         final CheckBox cbLegacyDl = (CheckBox) findViewById(R.id.settings_cb_legacy_dl);
         final CheckBox cbBlur = (CheckBox) findViewById(R.id.settings_cb_blur);
+        final CheckBox cbAnim = (CheckBox) findViewById(R.id.settings_cb_anim);
 
         findViewById(R.id.link_telegram).setOnClickListener(new View.OnClickListener() {
             @Override
@@ -116,6 +117,7 @@ public class SettingsActivity extends Activity {
         cbRussianDomain.setChecked(prefs.getBoolean("rus_url_fix", false));
         cbLegacyDl.setChecked(prefs.getBoolean("legacy_download", false));
         cbBlur.setChecked(Utils.isBlurEnabled(this));
+        cbAnim.setChecked(Utils.isAnimEnabled(this));
 
         cbRussianDomain.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
@@ -135,7 +137,17 @@ public class SettingsActivity extends Activity {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 Utils.savePrefs(prefs.edit().putBoolean("blur_enabled", isChecked));
+                PerfGuard.markBlurUserSet(SettingsActivity.this);
                 if (ghostTitle != null) ghostTitle.refreshBlurEnabled();
+            }
+        });
+
+        cbAnim.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                Utils.savePrefs(prefs.edit().putBoolean("anim_enabled", isChecked));
+                PerfGuard.markAnimUserSet(SettingsActivity.this);
+                if (ghostTitle != null) ghostTitle.refreshAnimEnabled();
             }
         });
 
@@ -354,6 +366,7 @@ public class SettingsActivity extends Activity {
         Utils.setTextColorById(this, R.id.settings_rus_fix_label, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_legacy_dl_label, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_blur_label, Theme.textPrimary());
+        Utils.setTextColorById(this, R.id.settings_anim_label, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_btn_send_log, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_btn_request_root, Theme.textPrimary());
 

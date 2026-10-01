@@ -34,7 +34,7 @@ import java.util.List;
 
 public class GhostTitle extends View {
 
-    public static final int MIN_HEIGHT_DP = 36;
+    public static final int MIN_HEIGHT_DP = 47;
     public static final int MAX_HEIGHT_DP = 50;
 
     private static final float HEIGHT_FRACTION = 0.09f;
@@ -63,6 +63,12 @@ public class GhostTitle extends View {
     private static final long BLUR_REAL_MS = 1000L / BLUR_REAL_FPS;
     private static final long BLUR_TICK_MS = 66L;
     private static final long BLUR_SAFETY_MS = 250L;
+    // The refresh interval stretches to ~3x the real capture cost (never below BLUR_REAL_MS, never
+    // above this), so a slow device spends at most about a third of its time on the backdrop.
+    private static final long BLUR_MAX_MS = 400L;
+
+    // Title transparency is quantised to this many steps.
+    private static final int TITLE_FADE_STEPS = 10;
 
     public static final int ID_BACK = -1;
     public static final int ID_MENU = -2;
@@ -78,6 +84,11 @@ public class GhostTitle extends View {
     private static final float[] SOFT_ALPHA = {1f, 1f, 0.85f, 0.45f, 0f};
 
     private static final float TITLE_SP = 17.5f;
+
+    // Title text is pinned to the zero-scroll backing: in MODE_AUTO it moves 1:1 with the content
+    // (no per-frame easing maths, so it cannot lag or jump) and only its transparency is animated.
+    // The fade is finished after this fraction of the bar height has been scrolled.
+    private static final float TITLE_FADE_FRACTION = 0.6f;
 
     private static final class Btn {
         int id;
@@ -118,11 +129,23 @@ public class GhostTitle extends View {
     private Canvas[] blurCanvas;
     private int blurForWidth = -1;
     private boolean blurBroken = false;
+    private long blurIntervalMs = BLUR_REAL_MS;
+    private boolean dockAnimating = false;
+    private static final long DOCK_SETTLE_MS = 140L;
+    private final Runnable dockSettle = new Runnable() {
+        public void run() {
+            if (!dockAnimating) return;
+            dockAnimating = false;
+            blurDirty = true;
+            invalidate();
+        }
+    };
     private boolean blurValid = false;
     private boolean blurPending = false;
     private boolean blurMoving = false;
     private boolean blurDirty = true;
     private boolean blurEnabled = true;
+    private boolean animEnabled = true;
     private long blurCaptureMs = 0L;
     private Bitmap[] blurFinal;
     private Canvas[] blurFinalCanvas;
@@ -147,22 +170,41 @@ public class GhostTitle extends View {
     private final ViewTreeObserver.OnPreDrawListener preDrawListener =
             new ViewTreeObserver.OnPreDrawListener() {
                 public boolean onPreDraw() {
+                    sampleScrollFrame();
                     if (selfPass) {
                         selfPass = false;
                         return true;
                     }
                     if (blurBroken || !blurEnabled || getVisibility() != View.VISIBLE || getWidth() <= 0) return true;
                     blurDirty = true;
+                    // The backdrop is frozen while the search box animates; it refreshes right after.
+                    if (dockAnimating) return true;
                     long age = SystemClock.uptimeMillis() - blurCaptureMs;
-                    if (age >= BLUR_REAL_MS) {
+                    if (age >= blurIntervalMs) {
                         invalidate();
                     } else if (!blurPending) {
                         blurPending = true;
-                        postDelayed(blurRefresh, BLUR_REAL_MS - age);
+                        postDelayed(blurRefresh, blurIntervalMs - age);
                     }
                     return true;
                 }
             };
+    // FPS probe: frames drawn while the content is being scrolled feed PerfGuard.
+    private static final long SCROLL_RECENT_MS = 120L;
+    private long lastScrollMs = 0L;
+
+    private void sampleScrollFrame() {
+        if (SystemClock.uptimeMillis() - lastScrollMs > SCROLL_RECENT_MS) return;
+        if (PerfGuard.onMovingFrame(getContext())) {
+            post(new Runnable() {
+                public void run() {
+                    refreshBlurEnabled();
+                    refreshAnimEnabled();
+                }
+            });
+        }
+    }
+
     private float searchDockP = 0f;
     private final Path path = new Path();
     private final Paint progressFillPaint = new Paint();
@@ -194,6 +236,7 @@ public class GhostTitle extends View {
     private long lastAnimTime = 0L;
     private View scrollTarget;
     private int lastScrollY = 0;
+    private int titleScrollPx = 0;
 
     private final ViewTreeObserver.OnScrollChangedListener scrollListener =
             new ViewTreeObserver.OnScrollChangedListener() {
@@ -206,6 +249,7 @@ public class GhostTitle extends View {
         super(activity);
         this.activity = activity;
         this.blurEnabled = Utils.isBlurEnabled(activity);
+        this.animEnabled = Utils.isAnimEnabled(activity);
         this.density = activity.getResources().getDisplayMetrics().density;
         int barDp = heightDp(activity);
         this.barPx = heightPx(activity);
@@ -477,14 +521,30 @@ public class GhostTitle extends View {
         super.onAttachedToWindow();
         getViewTreeObserver().addOnScrollChangedListener(scrollListener);
         getViewTreeObserver().addOnPreDrawListener(preDrawListener);
+        PerfGuard.onScreenAttached();
         blurDirty = true;
         refreshBlurEnabled();
+        refreshAnimEnabled();
     }
 
     @Override
     public void onWindowFocusChanged(boolean hasWindowFocus) {
         super.onWindowFocusChanged(hasWindowFocus);
-        if (hasWindowFocus) refreshBlurEnabled();
+        if (hasWindowFocus) {
+            refreshBlurEnabled();
+            refreshAnimEnabled();
+        }
+    }
+
+    public void refreshAnimEnabled() {
+        boolean on = Utils.isAnimEnabled(getContext());
+        if (on == animEnabled) return;
+        animEnabled = on;
+        if (!on) {
+            hideP = hideTarget;
+            lastAnimTime = 0L;
+        }
+        invalidate();
     }
 
     public void refreshBlurEnabled() {
@@ -516,7 +576,7 @@ public class GhostTitle extends View {
 
     private void applyTarget(float t) {
         hideTarget = t;
-        if (getWidth() == 0) {
+        if (getWidth() == 0 || !animEnabled) {
             hideP = t;
         }
         invalidate();
@@ -525,6 +585,7 @@ public class GhostTitle extends View {
     private void handleScroll() {
         if (scrollTarget == null) return;
         int y = scrollTarget.getScrollY();
+        if (y != lastScrollY) lastScrollMs = SystemClock.uptimeMillis();
         if (mode != MODE_AUTO) {
             lastScrollY = y;
             invalidate();
@@ -537,10 +598,14 @@ public class GhostTitle extends View {
 
     private void syncToScroll(int y) {
         float p = (y <= 0) ? 0f : Math.min(1f, y / (float) barPx);
+        int oldPx = titleScrollPx;
+        titleScrollPx = (y <= 0) ? 0 : Math.min(y, barPx);
         hideP = p;
         hideTarget = p;
         lastAnimTime = 0L;
-        invalidate();
+        // Once the title has left the bar, scrolling changes nothing in this view (the blurred
+        // backdrop refreshes itself through the pre-draw listener), so no redraw is needed.
+        if (titleScrollPx != oldPx || mode != MODE_AUTO) invalidate();
     }
 
     private void stepAnimation() {
@@ -622,9 +687,20 @@ public class GhostTitle extends View {
         float btnCy = h / 2f;
         float btnShadowR = 24f * density * shadowScale;
 
-        float cy = h / 2f - hid * h * 0.6f;
-
-        int titleAlpha = (int) (255 * (1f - hid) * (1f - Math.min(1f, searchDockP * 2f)));
+        float cy;
+        int titleAlpha;
+        if (mode == MODE_AUTO) {
+            // 1:1 with the scrolled content; transparency only (none at all when animations are off)
+            cy = h / 2f - titleScrollPx;
+            float fade = 1f;
+            if (animEnabled) fade = 1f - Math.min(1f, titleScrollPx / (h * TITLE_FADE_FRACTION));
+            fade *= (1f - Math.min(1f, searchDockP * 2f));
+            fade = Math.round(fade * TITLE_FADE_STEPS) / (float) TITLE_FADE_STEPS;
+            titleAlpha = (int) (255 * fade + 0.5f);
+        } else {
+            cy = h / 2f - hid * h * 0.6f;
+            titleAlpha = (int) (255 * (1f - hid) * (1f - Math.min(1f, searchDockP * 2f)));
+        }
 
         CharSequence text = null;
         float titleX = 0f;
@@ -662,7 +738,9 @@ public class GhostTitle extends View {
         if (text != null) {
             textPaint.getFontMetrics(fontMetrics);
             float baseline = cy - (fontMetrics.ascent + fontMetrics.descent) / 2f;
-            c.drawText(text, 0, text.length(), titleX, baseline, textPaint);
+            if (baseline + fontMetrics.descent > 0f) {
+                c.drawText(text, 0, text.length(), titleX, baseline, textPaint);
+            }
         }
 
         drawProgress(c, w);
@@ -673,7 +751,17 @@ public class GhostTitle extends View {
         if (p > 1f) p = 1f;
         if (p == searchDockP) return this;
         searchDockP = p;
-        invalidate();
+        boolean anim = p > 0f && p < 1f;
+        boolean animChanged = anim != dockAnimating;
+        dockAnimating = anim;
+        // The transition is scroll-driven, so "finished" can't be detected: the backdrop stays frozen
+        // only while p keeps changing and is released shortly after it stops.
+        removeCallbacks(dockSettle);
+        if (anim) postDelayed(dockSettle, DOCK_SETTLE_MS);
+        if (animChanged && !anim) blurDirty = true;
+        boolean titleShown = title != null && title.length() > 0
+                && (mode != MODE_AUTO || titleScrollPx < barPx);
+        if (titleShown || animChanged) invalidate();
         return this;
     }
 
@@ -722,15 +810,19 @@ public class GhostTitle extends View {
             long now = SystemClock.uptimeMillis();
             long age = now - blurCaptureMs;
             boolean captured = false;
-            if (!blurValid || ((blurDirty || age >= BLUR_SAFETY_MS) && age >= BLUR_REAL_MS)) {
+            if (!blurValid || (!dockAnimating && (blurDirty || age >= BLUR_SAFETY_MS) && age >= blurIntervalMs)) {
                 blurDirty = false;
+                long t0 = SystemClock.uptimeMillis();
                 captureBlur(parent, w, h);
+                long cost = SystemClock.uptimeMillis() - t0;
                 blurCaptureMs = now;
                 captured = true;
+                long want = cost * 3L;
+                blurIntervalMs = want < BLUR_REAL_MS ? BLUR_REAL_MS : (want > BLUR_MAX_MS ? BLUR_MAX_MS : want);
             }
 
             float a = 1f;
-            if (blurMoving) a = Math.min(1f, (now - blurCaptureMs) / (float) BLUR_REAL_MS);
+            if (blurMoving) a = Math.min(1f, (now - blurCaptureMs) / (float) blurIntervalMs);
             Bitmap cur = blurFinal[blurCur];
             Bitmap prev = blurFinal[1 - blurCur];
             blurSrc.set(0, 0, cur.getWidth(), cur.getHeight());
@@ -745,8 +837,8 @@ public class GhostTitle extends View {
             if (blurMoving && a >= 1f && !captured) blurMoving = false;
             long delay = -1L;
             if (blurMoving) delay = BLUR_TICK_MS;
-            if (blurDirty && !captured) {
-                long rest = Math.max(1L, BLUR_REAL_MS - age);
+            if (blurDirty && !captured && !dockAnimating) {
+                long rest = Math.max(1L, blurIntervalMs - age);
                 delay = (delay < 0L) ? rest : Math.min(delay, rest);
             }
             if (delay > 0L && !blurPending) {

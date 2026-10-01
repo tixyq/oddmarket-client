@@ -289,6 +289,19 @@ public class MainActivity extends Activity {
         lastRussianDomainState = isRussianDomainActive(this);
     }
 
+    // Category buttons: height is a fraction of the screen height, clamped to [MIN, MAX] (same idea as GhostTitle).
+    private static final int TAB_MIN_HEIGHT_DP = 50;
+    private static final int TAB_MAX_HEIGHT_DP = 55;
+    private static final float TAB_HEIGHT_FRACTION = 0.07f;
+
+    private int tabButtonHeightPx() {
+        DisplayMetrics m = getResources().getDisplayMetrics();
+        int dp = Math.round(m.heightPixels / m.density * TAB_HEIGHT_FRACTION);
+        if (dp < TAB_MIN_HEIGHT_DP) dp = TAB_MIN_HEIGHT_DP;
+        if (dp > TAB_MAX_HEIGHT_DP) dp = TAB_MAX_HEIGHT_DP;
+        return (int) (dp * m.density + 0.5f);
+    }
+
     private void detectTablet() {
         DisplayMetrics metrics = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getMetrics(metrics);
@@ -346,7 +359,7 @@ public class MainActivity extends Activity {
         statusTextView.setPadding(Theme.dpToPx(this, 16), 0, Theme.dpToPx(this, 16), 0);
         statusTextView.setTextSize(18);
         statusTextView.setTextColor(Theme.textSecondary());
-        statusTextView.setCompoundDrawablePadding(15);
+        statusTextView.setCompoundDrawablePadding(Theme.dpToPx(this, 2));
         statusTextView.setVisibility(View.GONE);
         originalView.addView(statusTextView);
 
@@ -357,7 +370,7 @@ public class MainActivity extends Activity {
         errorOverlay.setPadding(Theme.dpToPx(this, 16), 0, Theme.dpToPx(this, 16), 0);
         errorOverlay.setTextSize(18);
         errorOverlay.setTextColor(Theme.textSecondary());
-        errorOverlay.setCompoundDrawablePadding(15);
+        errorOverlay.setCompoundDrawablePadding(Theme.dpToPx(this, 2));
         errorOverlay.setVisibility(View.GONE);
         rootLayout.addView(errorOverlay, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -400,10 +413,16 @@ public class MainActivity extends Activity {
         tabGames = (Button) findViewById(R.id.tab_games);
         tabApps.setTextColor(Theme.textPrimary());
         tabGames.setTextColor(Theme.textPrimary());
-        tabApps.setBackgroundDrawable(Theme.buttonBackground());
-        tabGames.setBackgroundDrawable(Theme.buttonBackground());
-        tabApps.setPadding(Theme.dpToPx(this, 12), Theme.dpToPx(this, 8), Theme.dpToPx(this, 12), Theme.dpToPx(this, 8));
-        tabGames.setPadding(Theme.dpToPx(this, 12), Theme.dpToPx(this, 8), Theme.dpToPx(this, 12), Theme.dpToPx(this, 8));
+        applyTabBackgrounds();
+
+        int tabH = tabButtonHeightPx();
+        for (Button b : new Button[]{tabApps, tabGames}) {
+            ViewGroup.LayoutParams lp = b.getLayoutParams();
+            if (lp != null) {
+                lp.height = tabH;
+                b.setLayoutParams(lp);
+            }
+        }
 
         View spacer = findViewById(R.id.tabs_list_spacer);
         if (spacer != null) spacer.setBackgroundColor(Theme.tabRowBackground());
@@ -551,31 +570,21 @@ public class MainActivity extends Activity {
     private static final int DOCK_SIDE_GAP_DP = 8;
     private static final int DOCK_BUTTON_GAP_DP = 2;
     private static final int DOCK_HYSTERESIS_DP = 2;
-    private static final long DOCK_ANIM_MS = 280L;
-    private static final float DOCK_MAX_STEP = 0.12f;
-    private boolean dockSyncing = false;
+    // The search box is driven by a pure formula of the scroll position (no timers, no state):
+    //   p = 0 -> the box sits in the list; p = 1 -> it sits in the title bar.
+    // p grows linearly while the placeholder travels the "band" just below the bar, so the box can
+    // never jump, never lags behind the finger and costs nothing when nothing scrolls.
+    private static final float DOCK_BAND_BARS = 1.0f;
+    // While p is between 0 and 1 the side insets are re-laid-out only when they moved this much;
+    // the vertical movement is applied every frame with offsetTopAndBottom() (no layout pass).
+    private static final int DOCK_INSET_STEP_DP = 2;
 
-    private boolean dockTarget = false;
+    private boolean dockSyncing = false;
     private float dockA = 0f;
-    private long dockAnimLast = 0L;
-    private boolean dockAnimRunning = false;
-    private final Runnable dockAnimStep = new Runnable() {
-        public void run() {
-            long now = android.os.SystemClock.uptimeMillis();
-            float dt = (now - dockAnimLast) / (float) DOCK_ANIM_MS;
-            if (dt > DOCK_MAX_STEP) dt = DOCK_MAX_STEP;
-            dockAnimLast = now;
-            float goal = dockTarget ? 1f : 0f;
-            if (dockA < goal) dockA = Math.min(goal, dockA + dt);
-            else if (dockA > goal) dockA = Math.max(goal, dockA - dt);
-            syncSearchDock();
-            if (dockA != (dockTarget ? 1f : 0f) && searchDock != null) {
-                Utils.postFrame(searchDock, this);
-            } else {
-                dockAnimRunning = false;
-            }
-        }
-    };
+    // Used only when animations are off: the box jumps between the two places with a small hysteresis.
+    private boolean dockDocked = false;
+    private boolean dockAnimOn = true;
+    private long dockAnimCheckT = 0L;
 
     private static float clamp01(float v) {
         return v < 0f ? 0f : (v > 1f ? 1f : v);
@@ -609,23 +618,30 @@ public class MainActivity extends Activity {
         int bar = GhostTitle.heightPx(this);
         int hyst = (int) (DOCK_HYSTERESIS_DP * density + 0.5f);
 
-        if (!dockTarget && raw < bar - hyst) dockTarget = true;
-        else if (dockTarget && raw > bar + hyst) dockTarget = false;
-        if (dockA != (dockTarget ? 1f : 0f) && !dockAnimRunning) {
-            dockAnimRunning = true;
-            dockAnimLast = android.os.SystemClock.uptimeMillis();
-            Utils.postFrame(searchDock, dockAnimStep);
-        }
-
         int h = searchDock.getHeight();
         if (h <= 0) h = searchPlaceholder.getHeight();
         int slot = Math.max(0, (bar - h) / 2);
 
+        long nowMs = android.os.SystemClock.uptimeMillis();
+        if (nowMs - dockAnimCheckT > 500L) {
+            dockAnimCheckT = nowMs;
+            dockAnimOn = Utils.isAnimEnabled(this);
+        }
+        if (dockAnimOn) {
+            int band = Math.max(1, (int) (bar * DOCK_BAND_BARS));
+            dockA = clamp01((bar + band - raw) / (float) band);
+        } else {
+            if (!dockDocked && raw < bar - hyst) dockDocked = true;
+            else if (dockDocked && raw > bar + hyst) dockDocked = false;
+            dockA = dockDocked ? 1f : 0f;
+        }
+
         float insetsP = smooth(clamp01(dockA / 0.6f));
         float vertP = smooth(clamp01((dockA - 0.2f) / 0.8f));
 
-        int topBase = Math.max(raw, bar - hyst);
-        int top = (int) (topBase + (slot - topBase) * vertP + 0.5f);
+        // Eased blend between "where the list has it" and "the title slot": the box follows the
+        // scroll 1:1 at p = 0 and comes to rest softly (zero speed) at p = 1.
+        int top = (int) (raw + (slot - raw) * vertP + 0.5f);
 
         int sideGap = (int) (DOCK_SIDE_GAP_DP * density + 0.5f);
         int leftFull = sideGap;
@@ -643,20 +659,35 @@ public class MainActivity extends Activity {
         if (ghostTitle != null) ghostTitle.setSearchDockProgress(dockA);
 
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) searchDock.getLayoutParams();
-        boolean changed = lp.topMargin != top || lp.leftMargin != left || lp.rightMargin != right;
+        // While animating, re-layout the side insets only when they moved noticeably (measuring the
+        // EditText every frame is the expensive part); the final values are always exact.
+        if (dockA != 0f && dockA != 1f) {
+            int q = (int) (DOCK_INSET_STEP_DP * density + 0.5f);
+            if (Math.abs(left - lp.leftMargin) < q && Math.abs(right - lp.rightMargin) < q) {
+                left = lp.leftMargin;
+                right = lp.rightMargin;
+            }
+        }
+        boolean hChanged = lp.leftMargin != left || lp.rightMargin != right;
+        boolean topChanged = lp.topMargin != top;
         int realH = searchDock.getHeight();
-        if (changed) {
+        if (hChanged || topChanged) {
             lp.topMargin = top;
             lp.leftMargin = left;
             lp.rightMargin = right;
             int cw = content.getWidth();
             if (realH > 0 && cw > 0) {
-                int w = Math.max(0, cw - left - right);
-                if (searchDock.getWidth() != w) {
-                    searchDock.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
-                            View.MeasureSpec.makeMeasureSpec(realH, View.MeasureSpec.EXACTLY));
+                if (hChanged) {
+                    int w = Math.max(0, cw - left - right);
+                    if (searchDock.getWidth() != w) {
+                        searchDock.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
+                                View.MeasureSpec.makeMeasureSpec(realH, View.MeasureSpec.EXACTLY));
+                    }
+                    searchDock.layout(left, top, left + w, top + realH);
+                } else {
+                    int dy = top - searchDock.getTop();
+                    if (dy != 0) searchDock.offsetTopAndBottom(dy);
                 }
-                searchDock.layout(left, top, left + w, top + realH);
             } else {
                 searchDock.setLayoutParams(lp);
             }
@@ -925,6 +956,30 @@ public class MainActivity extends Activity {
             tabApps.setText(R.string.tab_apps);
             tabGames.setText(R.string.tab_all);
         }
+        applyTabBackgrounds();
+    }
+
+    // Button background (as before) + optional PNG from res/drawable on top. Text is drawn by the button itself.
+    // Pictures: apps.png, games.png, all.png. A missing picture is simply skipped.
+    private void applyTabBackgrounds() {
+        if (tabApps == null || tabGames == null) return;
+        boolean appsIsAll = currentTab.equals("a");
+        boolean gamesIsAll = currentTab.equals("b");
+        setTabBackground(tabApps, appsIsAll ? "all" : "apps");
+        setTabBackground(tabGames, gamesIsAll ? "all" : "games");
+    }
+
+    private void setTabBackground(Button button, String imageName) {
+        android.graphics.drawable.Drawable base = Theme.buttonBackground();
+        android.graphics.drawable.Drawable image = TabImageDrawable.load(this, imageName);
+        android.graphics.drawable.Drawable bg = base;
+        if (image != null) {
+            bg = new android.graphics.drawable.LayerDrawable(
+                    new android.graphics.drawable.Drawable[]{base, image});
+        }
+        button.setBackgroundDrawable(bg);
+        button.setPadding(Theme.dpToPx(this, 12), Theme.dpToPx(this, 8),
+                Theme.dpToPx(this, 12), Theme.dpToPx(this, 8));
     }
 
     @Override
@@ -956,15 +1011,17 @@ public class MainActivity extends Activity {
     private void showTransientError(int textResId, int iconResId) {
         if (errorOverlay == null || listView == null || scrollView == null) return;
         errorOverlay.removeCallbacks(errorHideRunnable);
-        int listTop = scrollView.getPaddingTop() + listView.getTop() - scrollView.getScrollY();
-        int y = Math.max(listTop, GhostTitle.heightPx(this)) + Theme.dpToPx(this, 24);
-        int rootH = rootLayout != null ? rootLayout.getHeight() : 0;
-        if (rootH > 0) y = Math.min(y, Math.max(0, rootH - Theme.dpToPx(this, 96)));
+        // Same place as statusTextView: below the tabs, centered in the remaining area (min 96dp).
+        int top = scrollView.getPaddingTop() + listView.getTop();
+        int areaBottom = scrollView.getHeight() > 0 ? scrollView.getHeight()
+                : (rootLayout != null ? rootLayout.getHeight() : 0);
+        int h = Math.max(areaBottom - top, Theme.dpToPx(this, 96));
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) errorOverlay.getLayoutParams();
-        lp.topMargin = y;
+        lp.topMargin = top;
+        lp.height = h;
         errorOverlay.setLayoutParams(lp);
         errorOverlay.setText(textResId);
-        errorOverlay.setCompoundDrawablesWithIntrinsicBounds(iconResId, 0, 0, 0);
+        errorOverlay.setCompoundDrawablesWithIntrinsicBounds(0, 0, iconResId, 0);
         listView.setVisibility(View.INVISIBLE);
         errorOverlay.setVisibility(View.VISIBLE);
         errorOverlayShown = true;
@@ -982,7 +1039,7 @@ public class MainActivity extends Activity {
         if (statusTextView == null) return;
         cancelTransientError();
         statusTextView.setText(textResId);
-        statusTextView.setCompoundDrawablesWithIntrinsicBounds(iconResId, 0, 0, 0);
+        statusTextView.setCompoundDrawablesWithIntrinsicBounds(0, 0, iconResId, 0);
         statusTextView.setVisibility(View.VISIBLE);
         hideListViewPreservingScroll();
     }
@@ -1433,7 +1490,7 @@ public class MainActivity extends Activity {
 
     private static void applyFull(final ImageView img, final String url, final Bitmap full, int fadeMs) {
         final android.graphics.drawable.Drawable cur = img.getDrawable();
-        if (fadeMs <= 0 || cur == null) {
+        if (fadeMs <= 0 || cur == null || !Utils.isAnimEnabled(img.getContext())) {
             img.setImageBitmap(full);
             return;
         }
@@ -1553,12 +1610,13 @@ public class MainActivity extends Activity {
 
         loadBannerImage(imgUrl, incomingView);
 
+        final int fadeDur = Utils.isAnimEnabled(this) ? 400 : 0;
         final AlphaAnimation animOut = new AlphaAnimation(1.0f, 0.0f);
-        animOut.setDuration(400);
+        animOut.setDuration(fadeDur);
         animOut.setFillAfter(true);
 
         final AlphaAnimation animIn = new AlphaAnimation(0.0f, 1.0f);
-        animIn.setDuration(400);
+        animIn.setDuration(fadeDur);
         animIn.setFillAfter(true);
 
         animOut.setAnimationListener(new Animation.AnimationListener() {
