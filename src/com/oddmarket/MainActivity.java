@@ -67,6 +67,7 @@ public class MainActivity extends Activity {
         }
     };
     private TextView accountBadgeView;
+    private View bannerTopSpacerView;
 
     private static final int ID_BANNER = Utils.generateViewId();
 
@@ -204,13 +205,6 @@ public class MainActivity extends Activity {
     private GhostTitle ghostTitle;
     private DownloadUi downloadUi;
 
-    private ViewGroup searchDock;
-    private View searchPlaceholder;
-    private Theme.SearchBoxBackground searchBg;
-    private boolean searchDockShown = false;
-    private final int[] dockLocA = new int[2];
-    private final int[] dockLocB = new int[2];
-
     private static final long SEARCH_DEBOUNCE_MS = 350L;
     private static final long PAGE_CACHE_TTL_MS = 90L * 1000L;
 
@@ -244,7 +238,6 @@ public class MainActivity extends Activity {
         detectTablet();
         buildRootLayout();
         bindViews();
-        setupSearchDock();
         buildBannerContainer();
         wireBannerClick();
         wireListAdapter();
@@ -289,7 +282,6 @@ public class MainActivity extends Activity {
         lastRussianDomainState = isRussianDomainActive(this);
     }
 
-    // Category buttons: height is a fraction of the screen height, clamped to [MIN, MAX] (same idea as GhostTitle).
     private static final int TAB_MIN_HEIGHT_DP = 50;
     private static final int TAB_MAX_HEIGHT_DP = 55;
     private static final float TAB_HEIGHT_FRACTION = 0.07f;
@@ -309,15 +301,23 @@ public class MainActivity extends Activity {
         isTablet = dpWidth >= 600;
     }
 
+    static int bgColor() {
+        return Theme.isDark() ? Theme.windowBackground() : Theme.tabRowBackground();
+    }
+
+    static int elColor() {
+        return Theme.isDark() ? Theme.tabRowBackground() : Theme.windowBackground();
+    }
+
     private void buildRootLayout() {
         rootLayout = new FrameLayout(this);
         rootLayout.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.FILL_PARENT));
-        rootLayout.setBackgroundColor(Theme.windowBackground());
+        rootLayout.setBackgroundColor(elColor());
 
         LinearLayout originalView = (LinearLayout) LayoutInflater.from(this).inflate(R.layout.main, null);
-        originalView.setBackgroundColor(Theme.windowBackground());
+        originalView.setBackgroundColor(elColor());
         View headerView = originalView.findViewById(R.id.main_header);
-        if (headerView != null) headerView.setBackgroundColor(Theme.tabRowBackground());
+        if (headerView != null) headerView.setBackgroundColor(bgColor());
 
         accountBadgeView = new TextView(this);
         accountBadgeView.setTextSize(13);
@@ -335,7 +335,7 @@ public class MainActivity extends Activity {
         updateAccountBadge(AccountManager.cachedNickname(this));
 
         scrollView = new TitleScrollView(this);
-        scrollView.setBackgroundColor(Theme.tabRowBackground());
+        scrollView.setBackgroundColor(bgColor());
         scrollView.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.FILL_PARENT));
         scrollView.setFillViewport(true);
 
@@ -379,8 +379,16 @@ public class MainActivity extends Activity {
         setContentView(rootLayout);
         Theme.applyFonts(rootLayout);
 
-        ghostTitle = GhostTitle.attach(this).setBackVisible(false).setMenuVisible(true)
-                .setMode(GhostTitle.MODE_AUTO).setBaseColor(Theme.tabRowBackground()).trackScroll(scrollView);
+        ghostTitle = GhostTitle.attach(this).setBackVisible(false).setSearchVisible(true).setMenuVisible(true)
+                .setSearchAction(new Runnable() {
+                    public void run() {
+                        startActivity(new Intent(MainActivity.this, SearchActivity.class));
+                    }
+                })
+
+                .setMode(GhostTitle.MODE_NORMAL).setBaseColor(bgColor()).trackScroll(scrollView);
+
+        ghostTitle.setTitleImage(getResources().getIdentifier("dm", "drawable", getPackageName()));
     }
 
     private void bindViews() {
@@ -396,8 +404,7 @@ public class MainActivity extends Activity {
         searchBox = (EditText) findViewById(R.id.search_box);
         searchBox.setTextColor(Theme.textPrimary());
         searchBox.setHintTextColor(Theme.textHint());
-        searchBg = Theme.searchBoxBackground();
-        searchBox.setBackgroundDrawable(searchBg);
+        searchBox.setBackgroundDrawable(Theme.searchBoxBackground());
         searchBox.setPadding(
                 Theme.dpToPx(this, 8), Theme.dpToPx(this, 6),
                 Theme.dpToPx(this, 40), Theme.dpToPx(this, 6));
@@ -425,7 +432,13 @@ public class MainActivity extends Activity {
         }
 
         View spacer = findViewById(R.id.tabs_list_spacer);
-        if (spacer != null) spacer.setBackgroundColor(Theme.tabRowBackground());
+        if (spacer != null) spacer.setBackgroundColor(bgColor());
+        View searchSpacer = findViewById(R.id.search_spacer);
+        if (searchSpacer != null) searchSpacer.setBackgroundColor(bgColor());
+        View bannerTopSpacer = findViewById(R.id.banner_top_spacer);
+        if (bannerTopSpacer != null) bannerTopSpacer.setBackgroundColor(bgColor());
+        bannerTopSpacerView = bannerTopSpacer;
+        syncBannerTopSpacer();
 
         bannerImageWrapper = (FrameLayout) findViewById(R.id.banner_container);
         bannerImageWrapper.setVisibility(View.VISIBLE);
@@ -457,7 +470,7 @@ public class MainActivity extends Activity {
             View row = inflater.inflate(R.layout.banner_row_tablet, mainLayout, false);
             FrameLayout slot = (FrameLayout) row.findViewById(R.id.banner_slot);
             View itemsContainer = row.findViewById(R.id.banner_items_container);
-            if (itemsContainer != null) itemsContainer.setBackgroundColor(Theme.tabRowBackground());
+            if (itemsContainer != null) itemsContainer.setBackgroundColor(bgColor());
             bannerImageWrapper.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             slot.addView(bannerImageWrapper);
 
@@ -524,184 +537,6 @@ public class MainActivity extends Activity {
     private void wireListAdapter() {
         adapter = new AppAdapter(this, appList);
         listView.setAdapter(adapter);
-    }
-
-    private void setupSearchDock() {
-        View box = findViewById(R.id.search_box);
-        if (box == null || !(box.getParent() instanceof ViewGroup)) return;
-        final ViewGroup wrapper = (ViewGroup) box.getParent();
-        if (!(wrapper.getParent() instanceof ViewGroup)) return;
-        ViewGroup header = (ViewGroup) wrapper.getParent();
-        ViewGroup content = (ViewGroup) findViewById(android.R.id.content);
-        if (content == null) return;
-
-        DisplayMetrics dm = getResources().getDisplayMetrics();
-        wrapper.measure(View.MeasureSpec.makeMeasureSpec(dm.widthPixels, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-        int h = wrapper.getMeasuredHeight();
-
-        int index = header.indexOfChild(wrapper);
-        header.removeView(wrapper);
-        searchPlaceholder = new View(this);
-        header.addView(searchPlaceholder, index,
-                new LinearLayout.LayoutParams(ViewGroup.LayoutParams.FILL_PARENT, h));
-
-        wrapper.setBackgroundDrawable(null);
-        wrapper.setVisibility(View.INVISIBLE);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                android.view.Gravity.TOP);
-        content.addView(wrapper, lp);
-        searchDock = wrapper;
-
-        android.view.ViewTreeObserver vto = content.getViewTreeObserver();
-        vto.addOnScrollChangedListener(new android.view.ViewTreeObserver.OnScrollChangedListener() {
-            public void onScrollChanged() {
-                syncSearchDock();
-            }
-        });
-        vto.addOnGlobalLayoutListener(new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
-            public void onGlobalLayout() {
-                syncSearchDock();
-            }
-        });
-    }
-
-    private static final int DOCK_SIDE_GAP_DP = 8;
-    private static final int DOCK_BUTTON_GAP_DP = 2;
-    private static final int DOCK_HYSTERESIS_DP = 2;
-    // The search box is driven by a pure formula of the scroll position (no timers, no state):
-    //   p = 0 -> the box sits in the list; p = 1 -> it sits in the title bar.
-    // p grows linearly while the placeholder travels the "band" just below the bar, so the box can
-    // never jump, never lags behind the finger and costs nothing when nothing scrolls.
-    private static final float DOCK_BAND_BARS = 1.0f;
-    // While p is between 0 and 1 the side insets are re-laid-out only when they moved this much;
-    // the vertical movement is applied every frame with offsetTopAndBottom() (no layout pass).
-    private static final int DOCK_INSET_STEP_DP = 2;
-
-    private boolean dockSyncing = false;
-    private float dockA = 0f;
-    // Used only when animations are off: the box jumps between the two places with a small hysteresis.
-    private boolean dockDocked = false;
-    private boolean dockAnimOn = true;
-    private long dockAnimCheckT = 0L;
-
-    private static float clamp01(float v) {
-        return v < 0f ? 0f : (v > 1f ? 1f : v);
-    }
-
-    private static float smooth(float t) {
-        return t * t * (3f - 2f * t);
-    }
-
-    private void syncSearchDock() {
-        if (dockSyncing) return;
-        dockSyncing = true;
-        try {
-            syncSearchDockImpl();
-        } finally {
-            dockSyncing = false;
-        }
-    }
-
-    private void syncSearchDockImpl() {
-        if (searchDock == null || searchPlaceholder == null) return;
-        if (searchPlaceholder.getWidth() == 0) return;
-        ViewGroup content = (ViewGroup) searchDock.getParent();
-        if (content == null) return;
-
-        searchPlaceholder.getLocationInWindow(dockLocA);
-        content.getLocationInWindow(dockLocB);
-        int raw = dockLocA[1] - dockLocB[1];
-
-        float density = getResources().getDisplayMetrics().density;
-        int bar = GhostTitle.heightPx(this);
-        int hyst = (int) (DOCK_HYSTERESIS_DP * density + 0.5f);
-
-        int h = searchDock.getHeight();
-        if (h <= 0) h = searchPlaceholder.getHeight();
-        int slot = Math.max(0, (bar - h) / 2);
-
-        long nowMs = android.os.SystemClock.uptimeMillis();
-        if (nowMs - dockAnimCheckT > 500L) {
-            dockAnimCheckT = nowMs;
-            dockAnimOn = Utils.isAnimEnabled(this);
-        }
-        if (dockAnimOn) {
-            int band = Math.max(1, (int) (bar * DOCK_BAND_BARS));
-            dockA = clamp01((bar + band - raw) / (float) band);
-        } else {
-            if (!dockDocked && raw < bar - hyst) dockDocked = true;
-            else if (dockDocked && raw > bar + hyst) dockDocked = false;
-            dockA = dockDocked ? 1f : 0f;
-        }
-
-        float insetsP = smooth(clamp01(dockA / 0.6f));
-        float vertP = smooth(clamp01((dockA - 0.2f) / 0.8f));
-
-        // Eased blend between "where the list has it" and "the title slot": the box follows the
-        // scroll 1:1 at p = 0 and comes to rest softly (zero speed) at p = 1.
-        int top = (int) (raw + (slot - raw) * vertP + 0.5f);
-
-        int sideGap = (int) (DOCK_SIDE_GAP_DP * density + 0.5f);
-        int leftFull = sideGap;
-        int rightFull = (int) (DOCK_BUTTON_GAP_DP * density + 0.5f);
-        if (ghostTitle != null) {
-            leftFull = Math.max(leftFull, ghostTitle.getLeftReservePx());
-            rightFull += ghostTitle.getRightReservePx();
-        }
-        int sbW = scrollView != null ? scrollView.scrollbarWidthPx() : 0;
-        if (rightFull < sbW) rightFull = sbW;
-        int left = (int) (leftFull * insetsP + 0.5f);
-        int right = (int) (sbW + (rightFull - sbW) * insetsP + 0.5f);
-
-        if (searchBg != null) searchBg.setDock(insetsP);
-        if (ghostTitle != null) ghostTitle.setSearchDockProgress(dockA);
-
-        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) searchDock.getLayoutParams();
-        // While animating, re-layout the side insets only when they moved noticeably (measuring the
-        // EditText every frame is the expensive part); the final values are always exact.
-        if (dockA != 0f && dockA != 1f) {
-            int q = (int) (DOCK_INSET_STEP_DP * density + 0.5f);
-            if (Math.abs(left - lp.leftMargin) < q && Math.abs(right - lp.rightMargin) < q) {
-                left = lp.leftMargin;
-                right = lp.rightMargin;
-            }
-        }
-        boolean hChanged = lp.leftMargin != left || lp.rightMargin != right;
-        boolean topChanged = lp.topMargin != top;
-        int realH = searchDock.getHeight();
-        if (hChanged || topChanged) {
-            lp.topMargin = top;
-            lp.leftMargin = left;
-            lp.rightMargin = right;
-            int cw = content.getWidth();
-            if (realH > 0 && cw > 0) {
-                if (hChanged) {
-                    int w = Math.max(0, cw - left - right);
-                    if (searchDock.getWidth() != w) {
-                        searchDock.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
-                                View.MeasureSpec.makeMeasureSpec(realH, View.MeasureSpec.EXACTLY));
-                    }
-                    searchDock.layout(left, top, left + w, top + realH);
-                } else {
-                    int dy = top - searchDock.getTop();
-                    if (dy != 0) searchDock.offsetTopAndBottom(dy);
-                }
-            } else {
-                searchDock.setLayoutParams(lp);
-            }
-        }
-        realH = searchDock.getHeight();
-        if (realH > 0 && searchPlaceholder.getHeight() != realH) {
-            ViewGroup.LayoutParams plp = searchPlaceholder.getLayoutParams();
-            plp.height = realH;
-            searchPlaceholder.setLayoutParams(plp);
-        }
-        if (!searchDockShown) {
-            searchDockShown = true;
-            searchDock.setVisibility(View.VISIBLE);
-        }
     }
 
     private String pageCacheKey(int page, String tab, String query) {
@@ -784,7 +619,7 @@ public class MainActivity extends Activity {
 
     private void wireFocusOrder() {
         bannerImageWrapper.setId(ID_BANNER);
-        bannerImageWrapper.setNextFocusDownId(R.id.search_box);
+        bannerImageWrapper.setNextFocusDownId(R.id.tab_apps);
 
         searchBox.setNextFocusUpId(ID_BANNER);
         searchBox.setNextFocusDownId(R.id.tab_apps);
@@ -793,11 +628,11 @@ public class MainActivity extends Activity {
         searchClearContainer.setNextFocusDownId(R.id.tab_apps);
         searchClearContainer.setNextFocusLeftId(R.id.search_box);
 
-        tabApps.setNextFocusUpId(R.id.search_box);
+        tabApps.setNextFocusUpId(ID_BANNER);
         tabApps.setNextFocusRightId(R.id.tab_games);
         tabApps.setNextFocusDownId(R.id.app_list);
 
-        tabGames.setNextFocusUpId(R.id.search_box);
+        tabGames.setNextFocusUpId(ID_BANNER);
         tabGames.setNextFocusLeftId(R.id.tab_apps);
         tabGames.setNextFocusDownId(R.id.app_list);
 
@@ -826,7 +661,7 @@ public class MainActivity extends Activity {
 
     private void reloadAll() {
         currentPage = 1;
-        // Refresh must also re-check the ratings, so drop the throttle for the next fetchRatings().
+
         lastRatingsOkMs = 0;
         loadData(true);
         loadBanners();
@@ -870,12 +705,19 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void syncBannerTopSpacer() {
+        if (bannerTopSpacerView == null || accountBadgeView == null) return;
+        boolean badgeInHeader = !isTablet && accountBadgeView.getVisibility() == View.VISIBLE;
+        bannerTopSpacerView.setVisibility(badgeInHeader ? View.GONE : View.VISIBLE);
+    }
+
     private void updateAccountBadge(String nickname) {
         if (accountBadgeView == null) return;
 
         if (nickname == null || nickname.length() == 0 || !AccountManager.isAccountSystemReachable(this)) {
             accountBadgeView.setVisibility(View.GONE);
             accountBadgeView.setText("");
+            syncBannerTopSpacer();
             return;
         }
 
@@ -888,6 +730,7 @@ public class MainActivity extends Activity {
         }
         accountBadgeView.setText(spannable);
         accountBadgeView.setVisibility(View.VISIBLE);
+        syncBannerTopSpacer();
     }
 
     private void performLogout() {
@@ -959,8 +802,6 @@ public class MainActivity extends Activity {
         applyTabBackgrounds();
     }
 
-    // Button background (as before) + optional PNG from res/drawable on top. Text is drawn by the button itself.
-    // Pictures: apps.png, games.png, all.png. A missing picture is simply skipped.
     private void applyTabBackgrounds() {
         if (tabApps == null || tabGames == null) return;
         boolean appsIsAll = currentTab.equals("a");
@@ -970,7 +811,7 @@ public class MainActivity extends Activity {
     }
 
     private void setTabBackground(Button button, String imageName) {
-        android.graphics.drawable.Drawable base = Theme.buttonBackground();
+        android.graphics.drawable.Drawable base = Theme.buttonBackground(elColor());
         android.graphics.drawable.Drawable image = TabImageDrawable.load(this, imageName);
         android.graphics.drawable.Drawable bg = base;
         if (image != null) {
@@ -1011,7 +852,7 @@ public class MainActivity extends Activity {
     private void showTransientError(int textResId, int iconResId) {
         if (errorOverlay == null || listView == null || scrollView == null) return;
         errorOverlay.removeCallbacks(errorHideRunnable);
-        // Same place as statusTextView: below the tabs, centered in the remaining area (min 96dp).
+
         int top = scrollView.getPaddingTop() + listView.getTop();
         int areaBottom = scrollView.getHeight() > 0 ? scrollView.getHeight()
                 : (rootLayout != null ? rootLayout.getHeight() : 0);
@@ -2109,8 +1950,7 @@ public class MainActivity extends Activity {
             }
         }
 
-        private static final String RATING_STAR = "\u2606";
-        private static final float RATING_STAR_RELATIVE_SIZE = 16f / 14f;
+        private static final float RATING_STAR_RELATIVE_SIZE = 20f / 14f;
         private static final int RATING_STAR_COLOR = Theme.PROGRESS_COLOR;
 
         private void bindRating(TextView txtRating, String pkg) {
@@ -2122,11 +1962,11 @@ public class MainActivity extends Activity {
             }
 
             String ratingNumber = String.format(java.util.Locale.US, "%.1f", rating);
-            String display = ratingNumber + " " + RATING_STAR;
+            String display = ratingNumber + " *";
             SpannableString spannable = new SpannableString(display);
             int starStart = ratingNumber.length() + 1;
-            spannable.setSpan(new RelativeSizeSpan(RATING_STAR_RELATIVE_SIZE), starStart, display.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            spannable.setSpan(new ForegroundColorSpan(RATING_STAR_COLOR), starStart, display.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            spannable.setSpan(new FilledStarSpan(RATING_STAR_RELATIVE_SIZE, RATING_STAR_COLOR),
+                    starStart, display.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             txtRating.setText(spannable);
             txtRating.setContentDescription(getString(R.string.rating_format, ratingNumber));
             txtRating.setVisibility(View.VISIBLE);

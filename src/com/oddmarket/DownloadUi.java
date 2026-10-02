@@ -1,7 +1,6 @@
 package com.oddmarket;
 
 import android.app.Activity;
-import android.widget.Toast;
 
 public final class DownloadUi implements DownloadCenter.Listener {
 
@@ -46,13 +45,13 @@ public final class DownloadUi implements DownloadCenter.Listener {
             DownloadCenter.Result r = DownloadCenter.takeResult();
             if (r != null) {
                 deliveredThisResume = true;
-                DownloadNotifier.cancelDone(activity, r);
                 if (r.error != null) {
-                    Toast.makeText(activity, activity.getString(R.string.toast_download_error_format, r.error),
-                            Toast.LENGTH_LONG).show();
+
+                    DownloadNotifier.showDone(activity, r, System.currentTimeMillis());
                     deliveredThisResume = false;
                 } else {
-                    ApkInstaller.install(activity, r.file, r.wasUpdate, new ApkInstaller.Callback() {
+                    DownloadNotifier.cancelDone(activity, r);
+                    ApkInstaller.install(activity, r, new ApkInstaller.Callback() {
                         public void onInstalledSilently() {
                             deliveredThisResume = false;
                             onDownloadChanged(false);

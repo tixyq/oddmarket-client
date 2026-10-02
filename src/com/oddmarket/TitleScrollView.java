@@ -32,10 +32,6 @@ public class TitleScrollView extends ScrollView {
         }
     }
 
-    public int scrollbarWidthPx() {
-        return getVerticalScrollbarWidth();
-    }
-
     @Override
     protected int computeVerticalScrollExtent() {
         int e = getHeight() - getPaddingTop() - getPaddingBottom();

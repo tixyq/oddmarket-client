@@ -17,11 +17,13 @@ public final class ApkInstaller {
         void onInstalledSilently();
     }
 
-    public static void install(final Activity activity, final File file, final boolean wasUpdate, final Callback callback) {
+    public static void install(final Activity activity, final DownloadCenter.Result r, final Callback callback) {
+        final File file = r.file;
+        final boolean wasUpdate = r.wasUpdate;
         FileLogger.i(Utils.TAG, "installApk: " + (file != null ? file.getAbsolutePath() : "null"));
 
         if (file == null || !file.exists()) {
-            Toast.makeText(activity, R.string.toast_install_failed_not_found, Toast.LENGTH_SHORT).show();
+            showInstallError(activity, r, R.string.toast_install_failed_not_found);
             return;
         }
 
@@ -38,14 +40,14 @@ public final class ApkInstaller {
                                 Toast.makeText(activity, msg, Toast.LENGTH_SHORT).show();
                                 if (callback != null) callback.onInstalledSilently();
                             } else {
-                                openSystemInstaller(activity, file);
+                                openSystemInstaller(activity, r);
                             }
                         }
                     });
                 } else {
                     handler.post(new Runnable() {
                         public void run() {
-                            openSystemInstaller(activity, file);
+                            openSystemInstaller(activity, r);
                         }
                     });
                 }
@@ -53,7 +55,12 @@ public final class ApkInstaller {
         }).start();
     }
 
-    private static void openSystemInstaller(Activity activity, File file) {
+    private static void showInstallError(Activity activity, DownloadCenter.Result r, int textRes) {
+        DownloadNotifier.showError(activity, r.name, activity.getString(textRes), r.page, r.notifId);
+    }
+
+    private static void openSystemInstaller(Activity activity, DownloadCenter.Result r) {
+        File file = r.file;
         FileLogger.i(Utils.TAG, "openSystemInstaller: " + file.getAbsolutePath());
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW);
@@ -67,7 +74,7 @@ public final class ApkInstaller {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             activity.startActivity(intent);
         } catch (Exception e) {
-            Toast.makeText(activity, R.string.toast_autoinstall_blocked, Toast.LENGTH_LONG).show();
+            showInstallError(activity, r, R.string.toast_autoinstall_blocked);
         }
     }
 }

@@ -124,7 +124,6 @@ public final class Utils {
                 .getBoolean("blur_enabled", PerfGuard.blurDefault());
     }
 
-    // Defaults depend on the CPU class, see PerfGuard.
     public static boolean isAnimEnabled(Context context) {
         return context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
                 .getBoolean("anim_enabled", PerfGuard.animDefault());

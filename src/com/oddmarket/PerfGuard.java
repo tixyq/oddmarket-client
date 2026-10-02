@@ -4,27 +4,17 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.widget.Toast;
 
-/**
- * Picks the default for blur / animations by CPU class, and switches blur off by itself when the
- * measured FPS while scrolling is too low. Animations are never switched off automatically.
- *
- * Both only ever touch an option the user has never set: the moment the user flips the checkbox in
- * Settings ({@link #markBlurUserSet} / {@link #markAnimUserSet}) that option is theirs for good.
- */
 final class PerfGuard {
 
-    // Defaults by CPU class (used only while the user has not chosen the option themselves):
-    // blur is heavy -> only fast multi-core phones; animations are cheap -> only very weak CPUs lose them.
     static final float BLUR_MIN_GHZ = 1.4f;
     static final int BLUR_MIN_CORES = 2;
     static final float ANIM_MIN_GHZ = 0.8f;
 
-    private static float cpuGhz = -2f; // -2 = not read yet, -1 = unreadable
+    private static float cpuGhz = -2f;
 
     private PerfGuard() {
     }
 
-    /** Highest max frequency over all cores, in GHz; -1 if the system does not tell us. */
     static float cpuMaxGhz() {
         if (cpuGhz != -2f) return cpuGhz;
         long maxKhz = 0L;
@@ -57,14 +47,12 @@ final class PerfGuard {
         }
     }
 
-    /** Default for "blur" when the user has not set it. */
     static boolean blurDefault() {
         float g = cpuMaxGhz();
-        if (g <= 0f) return android.os.Build.VERSION.SDK_INT >= 21; // unreadable: trust only new systems
+        if (g <= 0f) return android.os.Build.VERSION.SDK_INT >= 21;
         return g >= BLUR_MIN_GHZ && Runtime.getRuntime().availableProcessors() >= BLUR_MIN_CORES;
     }
 
-    /** Default for "animations" when the user has not set it. */
     static boolean animDefault() {
         float g = cpuMaxGhz();
         if (g <= 0f) return android.os.Build.VERSION.SDK_INT >= 9;
@@ -76,10 +64,8 @@ final class PerfGuard {
     private static final String KEY_BLUR = "blur_enabled";
     private static final String KEY_ANIM = "anim_enabled";
 
-    // The only run-time rule: the current FPS while the content is moving.
-    // FPS is averaged over FPS_WINDOW frames; two bad windows in a row trigger the switch-off.
     private static final int FPS_WINDOW = 20;
-    private static final float BLUR_MIN_FPS = 25f;  // below this blur is switched off (animations are never touched)
+    private static final float BLUR_MIN_FPS = 25f;
     private static final int BAD_WINDOWS = 2;
 
     private static long lastFrameMs = 0L;
@@ -116,23 +102,18 @@ final class PerfGuard {
         badWindows = 0;
     }
 
-    /** A screen has just appeared: its first frames (inflation, first layout) are not measured. */
     static void onScreenAttached() {
         warmUntilMs = android.os.SystemClock.uptimeMillis() + 1500L;
         lastFrameMs = 0L;
         resetWindow();
     }
 
-    /**
-     * Call once per frame that is drawn while the content is scrolling or moving.
-     * @return true if blur has just been switched off (caller refreshes its state).
-     */
     static boolean onMovingFrame(Context c) {
         long now = android.os.SystemClock.uptimeMillis();
         long gap = now - lastFrameMs;
         lastFrameMs = now;
         if (now < warmUntilMs || gap <= 0L || gap > 250L) {
-            if (gap > 250L) resetWindow(); // movement stopped: start a fresh window next time
+            if (gap > 250L) resetWindow();
             return false;
         }
         winCount++;

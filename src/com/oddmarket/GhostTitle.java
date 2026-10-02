@@ -10,6 +10,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RadialGradient;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.SystemClock;
 import android.text.TextPaint;
@@ -63,18 +64,18 @@ public class GhostTitle extends View {
     private static final long BLUR_REAL_MS = 1000L / BLUR_REAL_FPS;
     private static final long BLUR_TICK_MS = 66L;
     private static final long BLUR_SAFETY_MS = 250L;
-    // The refresh interval stretches to ~3x the real capture cost (never below BLUR_REAL_MS, never
-    // above this), so a slow device spends at most about a third of its time on the backdrop.
+
     private static final long BLUR_MAX_MS = 400L;
 
-    // Title transparency is quantised to this many steps.
     private static final int TITLE_FADE_STEPS = 10;
 
     public static final int ID_BACK = -1;
     public static final int ID_MENU = -2;
+    public static final int ID_SEARCH = -3;
 
     private static final int KIND_BACK = 0;
     private static final int KIND_MENU = 1;
+    private static final int KIND_SEARCH = 2;
 
     private static final int MASK = 0xff;
 
@@ -85,9 +86,6 @@ public class GhostTitle extends View {
 
     private static final float TITLE_SP = 17.5f;
 
-    // Title text is pinned to the zero-scroll backing: in MODE_AUTO it moves 1:1 with the content
-    // (no per-frame easing maths, so it cannot lag or jump) and only its transparency is animated.
-    // The fade is finished after this fraction of the bar height has been scrolled.
     private static final float TITLE_FADE_FRACTION = 0.6f;
 
     private static final class Btn {
@@ -105,12 +103,20 @@ public class GhostTitle extends View {
 
     private final Btn backBtn = new Btn();
     private final Btn menuBtn = new Btn();
+    private final Btn searchBtn = new Btn();
     private final List<Btn> visibleBtns = new ArrayList<Btn>();
 
     private boolean showBack = false;
     private boolean showMenu = false;
+    private boolean showSearch = false;
 
     private CharSequence title = "";
+
+    private Bitmap titleBmp;
+    private final Paint titleBmpPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final Rect titleBmpSrc = new Rect();
+    private final RectF titleBmpDst = new RectF();
+    private static final float TITLE_IMG_VPAD_DP = 4f;
     private int iconColor;
     private int textColor;
     private int pressColor;
@@ -130,16 +136,6 @@ public class GhostTitle extends View {
     private int blurForWidth = -1;
     private boolean blurBroken = false;
     private long blurIntervalMs = BLUR_REAL_MS;
-    private boolean dockAnimating = false;
-    private static final long DOCK_SETTLE_MS = 140L;
-    private final Runnable dockSettle = new Runnable() {
-        public void run() {
-            if (!dockAnimating) return;
-            dockAnimating = false;
-            blurDirty = true;
-            invalidate();
-        }
-    };
     private boolean blurValid = false;
     private boolean blurPending = false;
     private boolean blurMoving = false;
@@ -177,8 +173,6 @@ public class GhostTitle extends View {
                     }
                     if (blurBroken || !blurEnabled || getVisibility() != View.VISIBLE || getWidth() <= 0) return true;
                     blurDirty = true;
-                    // The backdrop is frozen while the search box animates; it refreshes right after.
-                    if (dockAnimating) return true;
                     long age = SystemClock.uptimeMillis() - blurCaptureMs;
                     if (age >= blurIntervalMs) {
                         invalidate();
@@ -189,7 +183,7 @@ public class GhostTitle extends View {
                     return true;
                 }
             };
-    // FPS probe: frames drawn while the content is being scrolled feed PerfGuard.
+
     private static final long SCROLL_RECENT_MS = 120L;
     private long lastScrollMs = 0L;
 
@@ -205,7 +199,6 @@ public class GhostTitle extends View {
         }
     }
 
-    private float searchDockP = 0f;
     private final Path path = new Path();
     private final Paint progressFillPaint = new Paint();
     private final Paint progressTrackPaint = new Paint();
@@ -264,6 +257,8 @@ public class GhostTitle extends View {
         backBtn.kind = KIND_BACK;
         menuBtn.id = ID_MENU;
         menuBtn.kind = KIND_MENU;
+        searchBtn.id = ID_SEARCH;
+        searchBtn.kind = KIND_SEARCH;
 
         textPaint.setTextSize(Math.max(TITLE_SP * activity.getResources().getDisplayMetrics().scaledDensity, 14f));
         textPaint.setTypeface(Theme.regularFont());
@@ -372,6 +367,20 @@ public class GhostTitle extends View {
         return this;
     }
 
+    public GhostTitle setTitleImage(int resId) {
+        if (resId == 0) return this;
+        try {
+            Bitmap bmp = android.graphics.BitmapFactory.decodeResource(activity.getResources(), resId);
+            if (bmp != null && bmp.getWidth() > 0 && bmp.getHeight() > 0) {
+                titleBmp = bmp;
+                invalidate();
+            }
+        } catch (Throwable t) {
+            FileLogger.w(Utils.TAG, "GhostTitle.setTitleImage failed", t);
+        }
+        return this;
+    }
+
     public GhostTitle setBackVisible(boolean visible) {
         showBack = visible;
         layoutDirty = true;
@@ -379,21 +388,18 @@ public class GhostTitle extends View {
         return this;
     }
 
-    public int getLeftReservePx() {
-        return showBack ? reserveEdgePx() + reserveButtonPx() : 0;
+    private Runnable searchAction;
+
+    public GhostTitle setSearchAction(Runnable action) {
+        searchAction = action;
+        return this;
     }
 
-    public int getRightReservePx() {
-        return reserveEdgePx() + (showMenu ? reserveButtonPx() : 0);
-    }
-
-    private int reserveEdgePx() {
-        return (int) (4 * density);
-    }
-
-    private int reserveButtonPx() {
-        int w = getWidth() > 0 ? getWidth() : getResources().getDisplayMetrics().widthPixels;
-        return (int) ((w / density <= 320f ? 44 : 48) * density);
+    public GhostTitle setSearchVisible(boolean visible) {
+        showSearch = visible;
+        layoutDirty = true;
+        invalidate();
+        return this;
     }
 
     public GhostTitle setMenuVisible(boolean visible) {
@@ -603,8 +609,7 @@ public class GhostTitle extends View {
         hideP = p;
         hideTarget = p;
         lastAnimTime = 0L;
-        // Once the title has left the bar, scrolling changes nothing in this view (the blurred
-        // backdrop refreshes itself through the pre-draw listener), so no redraw is needed.
+
         if (titleScrollPx != oldPx || mode != MODE_AUTO) invalidate();
     }
 
@@ -646,12 +651,22 @@ public class GhostTitle extends View {
         int btnW = (int) ((w / density <= 320f ? 44 : 48) * density);
         int edge = (int) (4 * density);
 
-        if (showBack) backBtn.bounds.set(edge, 0, edge + btnW, h);
+        int leftX = edge;
+        if (showBack) {
+            backBtn.bounds.set(leftX, 0, leftX + btnW, h);
+            leftX += btnW;
+        }
 
-        if (showMenu) menuBtn.bounds.set(w - edge - btnW, 0, w - edge, h);
+        int rightX = w - edge;
+        if (showMenu) {
+            menuBtn.bounds.set(rightX - btnW, 0, rightX, h);
+            rightX -= btnW;
+        }
+        if (showSearch) searchBtn.bounds.set(rightX - btnW, 0, rightX, h);
 
         visibleBtns.clear();
         if (showBack) visibleBtns.add(backBtn);
+        if (showSearch) visibleBtns.add(searchBtn);
         if (showMenu) visibleBtns.add(menuBtn);
     }
 
@@ -690,33 +705,49 @@ public class GhostTitle extends View {
         float cy;
         int titleAlpha;
         if (mode == MODE_AUTO) {
-            // 1:1 with the scrolled content; transparency only (none at all when animations are off)
+
             cy = h / 2f - titleScrollPx;
             float fade = 1f;
             if (animEnabled) fade = 1f - Math.min(1f, titleScrollPx / (h * TITLE_FADE_FRACTION));
-            fade *= (1f - Math.min(1f, searchDockP * 2f));
             fade = Math.round(fade * TITLE_FADE_STEPS) / (float) TITLE_FADE_STEPS;
             titleAlpha = (int) (255 * fade + 0.5f);
         } else {
             cy = h / 2f - hid * h * 0.6f;
-            titleAlpha = (int) (255 * (1f - hid) * (1f - Math.min(1f, searchDockP * 2f)));
+            titleAlpha = (int) (255 * (1f - hid));
         }
 
         CharSequence text = null;
         float titleX = 0f;
-        if (title != null && title.length() > 0 && titleAlpha > 0) {
+        if (titleBmp != null) {
+            if (titleAlpha > 0) {
+                float vpad = TITLE_IMG_VPAD_DP * density;
+                float left = showBack ? 72f * density : 2f * vpad;
+                float right = w - 16f * density;
+                for (int i = 0; i < buttons.size(); i++) {
+                    Btn b = buttons.get(i);
+                    if (b != backBtn) right = Math.min(right, b.bounds.left);
+                }
+                float ih = h - 2f * vpad;
+                float iw = ih * titleBmp.getWidth() / titleBmp.getHeight();
+                if (left + iw > right) {
+                    iw = Math.max(0f, right - left);
+                    ih = iw * titleBmp.getHeight() / titleBmp.getWidth();
+                }
+                float top = cy - ih / 2f;
+                titleBmpSrc.set(0, 0, titleBmp.getWidth(), titleBmp.getHeight());
+                titleBmpDst.set(left, top, left + iw, top + ih);
+                titleBmpPaint.setAlpha(titleAlpha);
+                if (iw > 0f) c.drawBitmap(titleBmp, titleBmpSrc, titleBmpDst, titleBmpPaint);
+            }
+        } else if (title != null && title.length() > 0 && titleAlpha > 0) {
 
-            float pad = 16f * density * shadowScale;
-            float gap = 2f * density;
-            float textX = showBack
-                    ? backBtn.bounds.centerX() + btnShadowR + gap + pad
-                    : 16f * density;
-            float limit = w - 12f * density;
+            float textX = showBack ? 72f * density : 16f * density;
+            float limit = w - 16f * density;
             for (int i = 0; i < buttons.size(); i++) {
                 Btn b = buttons.get(i);
-                if (b != backBtn) limit = Math.min(limit, b.bounds.centerX() - btnShadowR);
+                if (b != backBtn) limit = Math.min(limit, b.bounds.left);
             }
-            float avail = limit - gap - pad - textX;
+            float avail = limit - textX;
             if (avail < 0f) avail = 0f;
             textPaint.setColor(textColor);
             textPaint.setAlpha((textColor >>> 24) * titleAlpha / 255);
@@ -744,25 +775,6 @@ public class GhostTitle extends View {
         }
 
         drawProgress(c, w);
-    }
-
-    public GhostTitle setSearchDockProgress(float p) {
-        if (p < 0f) p = 0f;
-        if (p > 1f) p = 1f;
-        if (p == searchDockP) return this;
-        searchDockP = p;
-        boolean anim = p > 0f && p < 1f;
-        boolean animChanged = anim != dockAnimating;
-        dockAnimating = anim;
-        // The transition is scroll-driven, so "finished" can't be detected: the backdrop stays frozen
-        // only while p keeps changing and is released shortly after it stops.
-        removeCallbacks(dockSettle);
-        if (anim) postDelayed(dockSettle, DOCK_SETTLE_MS);
-        if (animChanged && !anim) blurDirty = true;
-        boolean titleShown = title != null && title.length() > 0
-                && (mode != MODE_AUTO || titleScrollPx < barPx);
-        if (titleShown || animChanged) invalidate();
-        return this;
     }
 
     private boolean ensureBlurBuffers(int w) {
@@ -810,7 +822,7 @@ public class GhostTitle extends View {
             long now = SystemClock.uptimeMillis();
             long age = now - blurCaptureMs;
             boolean captured = false;
-            if (!blurValid || (!dockAnimating && (blurDirty || age >= BLUR_SAFETY_MS) && age >= blurIntervalMs)) {
+            if (!blurValid || ((blurDirty || age >= BLUR_SAFETY_MS) && age >= blurIntervalMs)) {
                 blurDirty = false;
                 long t0 = SystemClock.uptimeMillis();
                 captureBlur(parent, w, h);
@@ -837,7 +849,7 @@ public class GhostTitle extends View {
             if (blurMoving && a >= 1f && !captured) blurMoving = false;
             long delay = -1L;
             if (blurMoving) delay = BLUR_TICK_MS;
-            if (blurDirty && !captured && !dockAnimating) {
+            if (blurDirty && !captured) {
                 long rest = Math.max(1L, blurIntervalMs - age);
                 delay = (delay < 0L) ? rest : Math.min(delay, rest);
             }
@@ -961,6 +973,9 @@ public class GhostTitle extends View {
             path.lineTo(cx - 9f * d, cy);
             path.lineTo(cx - 1f * d, cy + 8f * d);
             c.drawPath(path, strokePaint);
+        } else if (b.kind == KIND_SEARCH) {
+            c.drawCircle(cx - 2f * d, cy - 2f * d, 6.5f * d, strokePaint);
+            c.drawLine(cx + 2.7f * d, cy + 2.7f * d, cx + 8.5f * d, cy + 8.5f * d, strokePaint);
         } else if (b.kind == KIND_MENU) {
             float half = 9f * d;
             float gap = 6f * d;
@@ -1035,11 +1050,14 @@ public class GhostTitle extends View {
     }
 
     private void fire(Btn b) {
+        if (b.id == ID_SEARCH && searchAction == null) return;
         playSoundEffect(SoundEffectConstants.CLICK);
         if (b.id == ID_BACK) {
             activity.finish();
         } else if (b.id == ID_MENU) {
             openMenu(activity);
+        } else if (b.id == ID_SEARCH) {
+            searchAction.run();
         }
     }
 

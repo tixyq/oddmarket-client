@@ -9,6 +9,7 @@
 
     <string name="signed_in_as">Вы вошли как %1$s</string>
     <string name="search_hint">Поиск...</string>
+    <string name="search_start_format">Начните искать %1$s</string>
     <string name="tab_apps">Приложения</string>
     <string name="tab_games">Игры</string>
     <string name="tab_all">Все</string>
@@ -123,6 +124,7 @@
     <string name="notif_channel_downloads">Загрузки</string>
     <string name="notif_download_done">Загрузка завершена. Нажмите, чтобы установить</string>
     <string name="notif_downloading">Загрузка...</string>
+    <string name="notif_initializing">Инициализация загрузки...</string>
     <string name="notif_waiting">Ожидаем загрузку</string>
     <string name="notif_download_error_format">Ошибка загрузки: %1$s</string>
     <string name="perf_blur_off">Размытие отключено автоматически для плавной работы. Его можно включить в настройках.</string>

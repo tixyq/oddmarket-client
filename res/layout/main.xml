@@ -13,6 +13,10 @@
         android:focusableInTouchMode="true"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content">
+        <View
+            android:id="@+id/banner_top_spacer"
+            android:layout_width="fill_parent"
+            android:layout_height="10dp" />
         <FrameLayout
             android:id="@+id/banner_container"
             android:visibility="gone"
@@ -32,7 +36,13 @@
                 android:scaleType="fitCenter"
                 android:adjustViewBounds="true" />
         </FrameLayout>
+
+        <View
+            android:id="@+id/search_spacer"
+            android:layout_width="fill_parent"
+            android:layout_height="10dp" />
         <RelativeLayout
+            android:visibility="gone"
             android:layout_width="fill_parent"
             android:layout_height="wrap_content">
             <EditText

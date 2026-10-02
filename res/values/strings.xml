@@ -9,6 +9,7 @@
 
     <string name="signed_in_as">Signed in as %1$s</string>
     <string name="search_hint">Search...</string>
+    <string name="search_start_format">Start searching %1$s</string>
     <string name="tab_apps">Apps</string>
     <string name="tab_games">Games</string>
     <string name="tab_all">All</string>
@@ -123,6 +124,7 @@
     <string name="notif_channel_downloads">Downloads</string>
     <string name="notif_download_done">Download complete. Tap to install</string>
     <string name="notif_downloading">Downloading...</string>
+    <string name="notif_initializing">Initializing download...</string>
     <string name="notif_waiting">Waiting to download</string>
     <string name="notif_download_error_format">Download failed: %1$s</string>
     <string name="perf_blur_off">Blur was turned off automatically to keep things smooth. You can turn it back on in Settings.</string>

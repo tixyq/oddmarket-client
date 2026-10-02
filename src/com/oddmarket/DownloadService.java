@@ -404,6 +404,7 @@ public class DownloadService extends Service {
                 }
                 isIndeterminate = (totalExpectedLength <= 0);
 
+                DownloadCenter.postStarted(gen);
                 publishProgress(progressVal, isIndeterminate);
 
                 input = conn.getInputStream();

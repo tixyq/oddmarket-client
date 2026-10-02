@@ -297,7 +297,10 @@ public class Theme {
     }
 
     public static android.graphics.drawable.StateListDrawable buttonBackground() {
-        int normal = buttonNormal();
+        return buttonBackground(buttonNormal());
+    }
+
+    public static android.graphics.drawable.StateListDrawable buttonBackground(int normal) {
         android.graphics.drawable.StateListDrawable selector = new android.graphics.drawable.StateListDrawable();
         selector.addState(new int[]{android.R.attr.state_pressed}, new SoftHighlight(normal, buttonPressed(), false));
         selector.addState(new int[]{android.R.attr.state_focused}, new SoftHighlight(normal, buttonFocused(), false));
@@ -346,62 +349,26 @@ public class Theme {
     }
 
     public static final class SearchBoxBackground extends android.graphics.drawable.Drawable {
-        private static final float RADIUS_DP = 3f;
-
         private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-        private final android.graphics.RectF rect = new android.graphics.RectF();
-        private final float radiusPx;
         private final int pageColor;
         private final int pageFocused;
-        private final int dockColor;
-        private final int dockFocused;
-        private float dock = 0f;
         private boolean focused = false;
 
         SearchBoxBackground() {
-            radiusPx = RADIUS_DP * ((appContext != null)
-                    ? appContext.getResources().getDisplayMetrics().density : 1f);
             if (isDark()) {
-                pageColor = 0x10FFFFFF;
+                pageColor = 0x0AFFFFFF;
                 pageFocused = editTextFocused();
-                dockColor = 0x38000000;
-                dockFocused = (editTextFocused() & 0x00FFFFFF) | 0x66000000;
             } else {
-                pageColor = 0x0C000000;
+                pageColor = 0x1A000000;
                 pageFocused = editTextFocused();
-                dockColor = 0x1C000000;
-                dockFocused = 0x263D7FCC;
             }
-        }
-
-        public void setDock(float p) {
-            if (p < 0f) p = 0f;
-            if (p > 1f) p = 1f;
-            if (p == dock) return;
-            dock = p;
-            invalidateSelf();
-        }
-
-        private static int lerp(int a, int b, float t) {
-            int ar = (a >>> 24), br = (b >>> 24);
-            int al = (int) (ar + (br - ar) * t + 0.5f);
-            int r = (int) (((a >> 16) & 0xFF) + ((((b >> 16) & 0xFF) - ((a >> 16) & 0xFF)) * t) + 0.5f);
-            int g = (int) (((a >> 8) & 0xFF) + ((((b >> 8) & 0xFF) - ((a >> 8) & 0xFF)) * t) + 0.5f);
-            int bl = (int) ((a & 0xFF) + (((b & 0xFF) - (a & 0xFF)) * t) + 0.5f);
-            return (al << 24) | (r << 16) | (g << 8) | bl;
         }
 
         @Override
         public void draw(android.graphics.Canvas c) {
-            paint.setColor(lerp(focused ? pageFocused : pageColor, focused ? dockFocused : dockColor, dock));
-            android.graphics.Rect b = getBounds();
-            float r = radiusPx * dock;
-            if (r < 0.5f) {
-                c.drawRect(b, paint);
-            } else {
-                rect.set(b);
-                c.drawRoundRect(rect, r, r, paint);
-            }
+            paint.setColor(focused ? pageFocused : pageColor);
+            float r = 3f * android.content.res.Resources.getSystem().getDisplayMetrics().density;
+            c.drawRoundRect(new android.graphics.RectF(getBounds()), r, r, paint);
         }
 
         @Override

@@ -198,7 +198,7 @@ public class DetailsActivity extends Activity {
         });
 
         overlayLayout.addView(overlayGallery);
-        // Created up front so it is already laid out when the first zoom starts.
+
         ensureZoomView();
     }
 
@@ -384,8 +384,6 @@ public class DetailsActivity extends Activity {
         });
     }
 
-    // A thumbnail counts as loaded when it shows a real picture: not empty (still downloading) and
-    // not the ic_pic placeholder that loadSized puts in when the download failed.
     private boolean isThumbLoaded(View v) {
         if (!(v instanceof ImageView)) return false;
         android.graphics.drawable.Drawable d = ((ImageView) v).getDrawable();
@@ -395,7 +393,7 @@ public class DetailsActivity extends Activity {
             if (ph != null && d.getConstantState() != null
                     && d.getConstantState() == ph.getConstantState()) return false;
         } catch (Exception e) {
-            // fall through: treat as loaded
+
         }
         return true;
     }
@@ -610,12 +608,8 @@ public class DetailsActivity extends Activity {
         }
     }
 
-    // Same timing model as the search dock on the main page (DOCK_ANIM_MS / DOCK_MAX_STEP):
-    // linear progress over a fixed time, a per-frame step cap so a slow frame never makes it jump,
-    // and smoothstep applied to staggered phases of the progress.
     private static final long ZOOM_MS = 170L;
-    // Slow frames on old devices may advance the zoom by up to this much, so it still finishes on
-    // time (the old 0.12 cap stretched a 210 ms animation to a second or more at low frame rates).
+
     private static final float ZOOM_MAX_STEP = 0.34f;
     private static final int DIM_ALPHA = 0xCC;
 
@@ -627,15 +621,10 @@ public class DetailsActivity extends Activity {
         return t * t * (3f - 2f * t);
     }
 
-    // Half smoothstep, half linear: the motion still eases a little at both ends but is much
-    // closer to constant speed than plain smoothstep.
     private static float ease(float t) {
         return 0.5f * t + 0.5f * smooth(t);
     }
 
-    // The side clipping of the zoom picture (the strip's padding) is released between the moment
-    // the black backdrop reaches this opacity (absolute alpha 0..1) and the mirror moment, where it
-    // is that far from its final opacity. The curve is symmetric, so opening and closing match.
     private static final float CLIP_RELEASE_DIM = 0.05f;
     private static final float DIM_PHASE = 0.5f;
 
@@ -656,7 +645,6 @@ public class DetailsActivity extends Activity {
         return null;
     }
 
-    // Where a FIT_CENTER image of bitmap size b is drawn inside view v, in content coordinates.
     private boolean fitRect(View v, Bitmap b, ViewGroup content, RectF out) {
         int bw = b.getWidth();
         int bh = b.getHeight();
@@ -665,7 +653,7 @@ public class DetailsActivity extends Activity {
         float availH = v.getHeight() - v.getPaddingTop() - v.getPaddingBottom();
         if (availW <= 0f || availH <= 0f) return false;
         v.getLocationInWindow(locA);
-        content.getLocationInWindow(locB);
+        overlayLayout.getLocationInWindow(locB);
         float s = Math.min(availW / bw, availH / bh);
         float w = bw * s;
         float h = bh * s;
@@ -673,6 +661,31 @@ public class DetailsActivity extends Activity {
         float y = locA[1] - locB[1] + v.getPaddingTop() + (availH - h) / 2f;
         out.set(x, y, x + w, y + h);
         return true;
+    }
+
+    private void restRect(Bitmap b, int cw, int ch, RectF out) {
+        float availW = cw - 2 * galleryPadW();
+        float availH = ch - 2 * galleryPadH();
+        float s = Math.min(availW / b.getWidth(), availH / b.getHeight());
+        float w = b.getWidth() * s;
+        float h = b.getHeight() * s;
+        float x = (cw - w) / 2f;
+        float y = (ch - h) / 2f;
+        out.set(x, y, x + w, y + h);
+    }
+
+    private void revealThumb(View thumb) {
+        if (screenshotsScroll == null || thumb == null || thumb.getParent() == null
+                || thumb.getParent().getParent() != screenshotsScroll) return;
+        int viewLeft = screenshotsScroll.getPaddingLeft();
+        int viewRight = screenshotsScroll.getWidth() - screenshotsScroll.getPaddingRight();
+        int sx = screenshotsScroll.getScrollX();
+        int left = ((View) thumb.getParent()).getLeft() + thumb.getLeft() - sx;
+        int right = left + thumb.getWidth();
+        int dx = 0;
+        if (left < viewLeft) dx = left - viewLeft;
+        else if (right > viewRight) dx = right - viewRight;
+        if (dx != 0) screenshotsScroll.scrollTo(sx + dx, screenshotsScroll.getScrollY());
     }
 
     private void ensureZoomView() {
@@ -684,14 +697,11 @@ public class DetailsActivity extends Activity {
         }
     }
 
-    // The part of the screen where the screenshot strip actually shows its thumbnails (the strip
-    // clips its children to its own side paddings). The zoom picture is clipped to it while it is
-    // still near the thumbnail, so it never draws over the page's edge paddings.
     private RectF thumbClip(View thumb, ViewGroup content, int ch) {
         if (screenshotsScroll == null || thumb == null || thumb.getParent() == null
                 || thumb.getParent().getParent() != screenshotsScroll) return null;
         screenshotsScroll.getLocationInWindow(locA);
-        content.getLocationInWindow(locB);
+        overlayLayout.getLocationInWindow(locB);
         float x = locA[0] - locB[0];
         return new RectF(x + screenshotsScroll.getPaddingLeft(), -ch,
                 x + screenshotsScroll.getWidth() - screenshotsScroll.getPaddingRight(), 2f * ch);
@@ -703,9 +713,7 @@ public class DetailsActivity extends Activity {
         ViewGroup content = (ViewGroup) overlayLayout.getParent();
         int cw = content.getWidth();
         int ch = content.getHeight();
-        // The thumbnail bitmap is shared with the LRU iconCache and can be evicted from it at any
-        // time (lists on other screens push it out), which used to silently skip the animation.
-        // The bitmap the source view is actually showing is always the right one to animate.
+
         Bitmap small = bitmapOf(source);
         if (small == null) small = MainActivity.cachedSmall(this, url);
         if (small == null) small = MainActivity.cachedFull(this, url);
@@ -714,20 +722,15 @@ public class DetailsActivity extends Activity {
         int bh = small.getHeight();
         if (bw <= 0 || bh <= 0) return false;
 
+        revealThumb(source);
         RectF from = new RectF();
         if (!fitRect(source, small, content, from)) return false;
 
-        float availW = cw - 2 * galleryPadW();
-        float availH = ch - 2 * galleryPadH();
-        float ts = Math.min(availW / bw, availH / bh);
-        float tw = bw * ts;
-        float th = bh * ts;
-        float tx = (cw - tw) / 2f;
-        float ty = (ch - th) / 2f;
-        RectF to = new RectF(tx, ty, tx + tw, ty + th);
+        RectF to = new RectF();
+        restRect(small, cw, ch, to);
 
         ensureZoomView();
-        // The source thumbnail stays where it is: the animation draws a clone of it.
+
         overlayDim.setVisibility(View.INVISIBLE);
         overlayGallery.setVisibility(View.INVISIBLE);
         zoomView.setVisibility(View.VISIBLE);
@@ -760,7 +763,7 @@ public class DetailsActivity extends Activity {
         };
 
         if (zoomView != null && zoomView.getVisibility() == View.VISIBLE) {
-            // Still opening: turn around from where the animation currently is.
+
             closing = true;
             zoomView.reverse(done);
             return true;
@@ -780,9 +783,10 @@ public class DetailsActivity extends Activity {
         Bitmap tb = bitmapOf(thumb);
         if (tb == null) tb = cur;
 
+        revealThumb(thumb);
         RectF big = new RectF();
         RectF small = new RectF();
-        if (!fitRect(child, cur, content, big)) return false;
+        restRect(cur, content.getWidth(), content.getHeight(), big);
         if (!fitRect(thumb, tb, content, small)) return false;
 
         ensureZoomView();
@@ -866,7 +870,6 @@ public class DetailsActivity extends Activity {
             setVisibility(View.GONE);
         }
 
-        // opening: progress 0 (thumbnail) -> 1 (gallery); closing runs the same curve from 1 back to 0.
         void begin(Bitmap b, RectF thumbRect, RectF bigRect, boolean opening, RectF thumbClipRect, Runnable end) {
             stop();
             hasClip = thumbClipRect != null;
@@ -911,7 +914,6 @@ public class DetailsActivity extends Activity {
             return ease(clamp01(p / DIM_PHASE));
         }
 
-        // Progress at which the backdrop reaches the given share (0..1) of its full dim (bisection).
         private float pForDim(float target) {
             float lo = 0f;
             float hi = DIM_PHASE;
@@ -923,9 +925,7 @@ public class DetailsActivity extends Activity {
         }
 
         private void place(RectF out) {
-            // One progress for position and size: every edge moves in a straight line from the
-            // thumbnail's exact rectangle to the gallery's, so the picture leaves (and lands on)
-            // the original image precisely, with no sideways swing.
+
             float e = ease(clamp01(p));
             out.set(thumb.left + (big.left - thumb.left) * e,
                     thumb.top + (big.top - thumb.top) * e,
@@ -933,9 +933,6 @@ public class DetailsActivity extends Activity {
                     thumb.bottom + (big.bottom - thumb.bottom) * e);
         }
 
-        // While the dim is still changing the whole screen has to be redrawn; once it has settled
-        // only the area the picture moved through is invalidated, which is what keeps this cheap
-        // on old software-rendered devices.
         private void invalidateFrame() {
             float d = dimP();
             if (!haveDrawn || d != lastDim) {
@@ -956,8 +953,7 @@ public class DetailsActivity extends Activity {
             place(cur);
             float k = 1f;
             if (hasClip) {
-                // The strip's side paddings are ignored more and more, spreading outwards from the
-                // strip, but only once the backdrop is visible; when fully released nothing clips.
+
                 float p0 = clipStart;
                 k = ease(clamp01((p - p0) / (clipEnd - p0)));
             }

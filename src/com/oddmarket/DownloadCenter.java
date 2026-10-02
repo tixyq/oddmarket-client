@@ -74,6 +74,7 @@ public final class DownloadCenter {
     private static final List<Result> pending = new ArrayList<Result>();
     private static int progress = 0;
     private static boolean indeterminate = true;
+    private static boolean started = false;
     private static int seqCounter = 0;
     private static long lastWhen = 0L;
     private static Context appCtx = null;
@@ -91,6 +92,7 @@ public final class DownloadCenter {
     public static boolean isActive() { return current != null; }
     public static int getProgress() { return progress; }
     public static boolean isIndeterminate() { return indeterminate; }
+    static boolean isStarted() { return started; }
     public static boolean hasPendingResult() { return !pending.isEmpty(); }
 
     public static boolean isTracked(String pkg, String name) {
@@ -171,9 +173,12 @@ public final class DownloadCenter {
         current = item;
         progress = 0;
         indeterminate = true;
+        started = false;
         item.gen = ++generation;
         item.when = nextWhen();
         serviceItem = item;
+
+        DownloadNotifier.showProgress(app, item);
 
         Intent intent = new Intent(app, DownloadService.class);
         try {
@@ -185,6 +190,7 @@ public final class DownloadCenter {
             }
         } catch (Throwable t) {
             FileLogger.e(Utils.TAG, "Cannot start DownloadService", t);
+            DownloadNotifier.cancelProgress(app);
             current = null;
             serviceItem = null;
             return false;
@@ -220,6 +226,16 @@ public final class DownloadCenter {
         }
     }
 
+    static void postStarted(final int gen) {
+        MAIN.post(new Runnable() {
+            public void run() {
+                if (gen != generation || current == null || started) return;
+                started = true;
+                if (appCtx != null) DownloadNotifier.updateProgress(appCtx, current, progress, indeterminate);
+            }
+        });
+    }
+
     static void postProgress(final int gen, final int value, final boolean isIndeterminate) {
         MAIN.post(new Runnable() {
             public void run() {
@@ -227,6 +243,7 @@ public final class DownloadCenter {
                 if (progress == value && indeterminate == isIndeterminate) return;
                 progress = value;
                 indeterminate = isIndeterminate;
+                if (appCtx != null) DownloadNotifier.updateProgress(appCtx, current, value, isIndeterminate);
                 fire(true);
             }
         });

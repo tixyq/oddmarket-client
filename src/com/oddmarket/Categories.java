@@ -31,6 +31,13 @@ public final class Categories {
         KEY_TO_RESOURCE.put("Casual", R.string.category_casual);
     }
 
+    public static String randomTranslated(Context context) {
+        java.util.ArrayList<String> keys = new java.util.ArrayList<String>(KEY_TO_RESOURCE.keySet());
+        if (keys.isEmpty()) return null;
+        String key = keys.get(new java.util.Random().nextInt(keys.size()));
+        return translate(context, key);
+    }
+
     public static String translate(Context context, String key) {
         if (key == null || key.length() == 0) {
             return null;
