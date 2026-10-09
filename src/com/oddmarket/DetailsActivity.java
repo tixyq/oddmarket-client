@@ -61,6 +61,11 @@ public class DetailsActivity extends Activity {
 
     private Button btnDownload;
 
+    private volatile boolean destroyed = false;
+    private boolean tabletLayout = false;
+    private TextView sizeCell;
+    private static final int INFO_CELL_TEXT_MAX_DP = 90;
+
     private int btnState = STATE_INSTALL;
     private static final int STATE_INSTALL = 1;
     private static final int STATE_UPDATE = 2;
@@ -205,7 +210,7 @@ public class DetailsActivity extends Activity {
     private void applyResponsiveHeaderLayout() {
         btnDownload = (Button) findViewById(R.id.details_btn_download);
         LinearLayout headerContainer = (LinearLayout) findViewById(R.id.details_header_container);
-        LinearLayout metaBlock = (LinearLayout) findViewById(R.id.details_meta_block);
+        View leftColumn = findViewById(R.id.details_left_column);
         View actionRow = findViewById(R.id.details_action_row);
 
         float scale = getResources().getDisplayMetrics().density;
@@ -214,18 +219,21 @@ public class DetailsActivity extends Activity {
         float screenWidthDp = screenWidthPx / scale;
 
         if (screenWidthPx > screenHeightPx || screenWidthDp > 500) {
+            tabletLayout = true;
             headerContainer.setOrientation(LinearLayout.HORIZONTAL);
-            LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-            metaBlock.setLayoutParams(metaParams);
+            LinearLayout.LayoutParams leftParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+            leftColumn.setLayoutParams(leftParams);
 
             int rowWidthPx = (int) (150 * scale + 0.5f);
             LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(rowWidthPx, ViewGroup.LayoutParams.WRAP_CONTENT);
             rowParams.setMargins((int)(15 * scale + 0.5f), 0, 0, 0);
             actionRow.setLayoutParams(rowParams);
+            moveInfoStripBelowHeader(headerContainer, leftColumn);
         } else {
+            tabletLayout = false;
             headerContainer.setOrientation(LinearLayout.VERTICAL);
-            LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0.0f);
-            metaBlock.setLayoutParams(metaParams);
+            LinearLayout.LayoutParams leftParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0.0f);
+            leftColumn.setLayoutParams(leftParams);
 
             LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             rowParams.setMargins(0, (int)(12 * scale + 0.5f), 0, 0);
@@ -233,16 +241,27 @@ public class DetailsActivity extends Activity {
         }
     }
 
+    private void moveInfoStripBelowHeader(LinearLayout headerContainer, View leftColumn) {
+        View infoScroll = findViewById(R.id.details_info_scroll);
+        if (infoScroll == null || infoScroll.getParent() != leftColumn) return;
+        if (!(headerContainer.getParent() instanceof LinearLayout)) return;
+        LinearLayout root = (LinearLayout) headerContainer.getParent();
+        ((ViewGroup) leftColumn).removeView(infoScroll);
+        infoScroll.setBackgroundColor(Theme.tabRowBackground());
+        infoScroll.setPadding(Theme.dpToPx(this, 12), Theme.dpToPx(this, 4),
+                Theme.dpToPx(this, 12), Theme.dpToPx(this, 8));
+        root.addView(infoScroll, root.indexOfChild(headerContainer) + 1,
+                new LinearLayout.LayoutParams(ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+    }
+
     private void bindIntentData() {
         ImageView imgIcon = (ImageView) findViewById(R.id.details_icon);
         TextView txtName = (TextView) findViewById(R.id.details_name);
         TextView txtVer = (TextView) findViewById(R.id.details_version);
-        TextView txtCategory = (TextView) findViewById(R.id.details_category);
         TextView txtDesc = (TextView) findViewById(R.id.details_desc);
 
         txtName.setTextColor(Theme.textPrimary());
         txtVer.setTextColor(Theme.textSecondary());
-        txtCategory.setTextColor(Theme.textSecondary());
         txtDesc.setTextColor(Theme.textPrimary());
 
         Utils.setTextColorById(this, R.id.details_caption_screenshots, Theme.textSecondary());
@@ -269,19 +288,7 @@ public class DetailsActivity extends Activity {
         txtName.setText(appName);
 
         siteVersion = intent.getStringExtra("version");
-        String minAndroid = intent.getStringExtra("min_android");
-
-        txtVer.setText(siteVersion + " (" + Utils.formatMinAndroid(this, minAndroid) + ")");
-
-        String category = intent.getStringExtra("category");
-
-        String translatedCategory = Categories.translate(this, category);
-        if (translatedCategory == null) {
-            txtCategory.setVisibility(View.GONE);
-        } else {
-            txtCategory.setText(translatedCategory);
-            txtCategory.setVisibility(View.VISIBLE);
-        }
+        txtVer.setText(siteVersion);
 
         String description = intent.getStringExtra("description");
         if (description != null) {
@@ -322,6 +329,111 @@ public class DetailsActivity extends Activity {
 
         downloadUrl = intent.getStringExtra("download_url");
         appScreenshots = intent.getStringArrayListExtra("screenshots");
+
+        buildInfoStrip(intent);
+    }
+
+    private TextView makeInfoCell() {
+        TextView t = new TextView(this);
+        t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14);
+        t.setTextColor(Theme.textPrimary());
+        t.setGravity(android.view.Gravity.CENTER);
+        t.setFocusable(false);
+        int pad = Theme.dpToPx(this, 16);
+        t.setPadding(pad, 0, pad, 0);
+        if (tabletLayout) t.setSingleLine(true);
+        Theme.applyFont(t);
+        return t;
+    }
+
+    private View makeInfoDivider() {
+        View v = new View(this);
+        int c = Theme.PROGRESS_COLOR;
+        int clear = c & 0x00FFFFFF;
+        v.setBackgroundDrawable(new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[] { clear, c, clear }));
+        return v;
+    }
+
+    private void addInfoCell(LinearLayout row, View cell, boolean withDivider) {
+        if (withDivider) {
+            row.addView(makeInfoDivider(), new LinearLayout.LayoutParams(
+                    Theme.dpToPx(this, 1), Theme.dpToPx(this, 36)));
+        }
+        row.addView(cell, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                tabletLayout ? 0.0f : 1.0f));
+    }
+
+    private void buildInfoStrip(Intent intent) {
+        LinearLayout row = (LinearLayout) findViewById(R.id.details_info_row);
+        if (row == null) return;
+        row.removeAllViews();
+        row.setGravity(tabletLayout
+                ? (android.view.Gravity.CENTER_VERTICAL | android.view.Gravity.CENTER_HORIZONTAL)
+                : android.view.Gravity.CENTER_VERTICAL);
+        boolean any = false;
+
+        String categoryKey = intent.getStringExtra("category");
+        String category = Categories.translate(this, categoryKey);
+        if (category != null) {
+            TextView t = makeInfoCell();
+            if (!tabletLayout) {
+                category = Categories.wrapForCell(this, categoryKey, category, t.getPaint(),
+                        Theme.dpToPx(this, INFO_CELL_TEXT_MAX_DP));
+            }
+            t.setText(category);
+            addInfoCell(row, t, any);
+            any = true;
+        }
+
+        sizeCell = makeInfoCell();
+        sizeCell.setText(R.string.info_loading);
+        addInfoCell(row, sizeCell, any);
+        any = true;
+
+        String minAndroid = intent.getStringExtra("min_android");
+        minAndroid = minAndroid == null ? "" : minAndroid.trim();
+        if (minAndroid.length() > 0) {
+            if (minAndroid.matches("[0-9.]+")) minAndroid += "+";
+            TextView t = makeInfoCell();
+            t.setText(getString(R.string.info_android) + (tabletLayout ? " " : "\n") + minAndroid);
+            addInfoCell(row, t, any);
+        }
+
+        loadSizeAsync();
+    }
+
+    private void loadSizeAsync() {
+        if (downloadUrl == null || downloadUrl.length() == 0) {
+            showSize(-1L);
+            return;
+        }
+        final String url = MainActivity.fixApkUrl(this, downloadUrl);
+        Thread th = new Thread(new Runnable() {
+            public void run() {
+                final long n = AppSize.fetch(url);
+                handler.post(new Runnable() {
+                    public void run() {
+                        if (!destroyed) showSize(n);
+                    }
+                });
+            }
+        }, "app-size");
+        th.setDaemon(true);
+        th.setPriority(Thread.MIN_PRIORITY);
+        th.start();
+    }
+
+    private void showSize(long bytes) {
+        if (sizeCell == null) return;
+        if (bytes <= 0L) {
+            sizeCell.setText(R.string.info_unknown);
+            return;
+        }
+        String[] f = AppSize.format(this, bytes);
+        sizeCell.setText(f[0] + (tabletLayout ? " " : "\n") + f[1]);
     }
 
     private void flattenButton(View button) {
@@ -505,6 +617,7 @@ public class DetailsActivity extends Activity {
                     super.onPageFinished(view, url);
                     CookieHelper.flush();
                     cancelReviewsTimeout();
+                    setReviewsSpinner(false);
                     if (!reviewsDead) {
                         container.setVisibility(View.VISIBLE);
                     }
@@ -532,6 +645,7 @@ public class DetailsActivity extends Activity {
                     super.onPageFinished(view, url);
                     CookieHelper.flush();
                     cancelReviewsTimeout();
+                    setReviewsSpinner(false);
                     if (!reviewsDead) {
                         container.setVisibility(View.VISIBLE);
                     }
@@ -552,6 +666,7 @@ public class DetailsActivity extends Activity {
         reviewsWebView.setWebChromeClient(new WebChromeClient());
 
         container.addView(reviewsWebView);
+        setReviewsSpinner(true);
         reviewsWebView.loadUrl(UrlBuilder.reviewsUrl(this, currentPkg));
 
         reviewsTimeoutRunnable = new Runnable() {
@@ -566,8 +681,16 @@ public class DetailsActivity extends Activity {
 
     private boolean reviewsDead = false;
 
+    private void setReviewsSpinner(boolean on) {
+        ReviewsSpinner spinner = (ReviewsSpinner) findViewById(R.id.details_reviews_spinner);
+        if (spinner == null) return;
+        if (on) spinner.setAlphaSource(ghostTitle);
+        spinner.setVisibility(on ? View.VISIBLE : View.GONE);
+    }
+
     private void hideReviewsBlock(android.view.View container) {
         reviewsDead = true;
+        setReviewsSpinner(false);
         cancelReviewsTimeout();
         container.setVisibility(View.GONE);
     }
@@ -1094,6 +1217,7 @@ public class DetailsActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         FileLogger.i(Utils.TAG, "DetailsActivity.onDestroy");
+        destroyed = true;
         handler.removeCallbacks(swapToFullRunnable);
         if (zoomView != null) zoomView.stop();
         MainActivity.clearFullCache();

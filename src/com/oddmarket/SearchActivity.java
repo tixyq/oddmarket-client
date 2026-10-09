@@ -60,6 +60,17 @@ public class SearchActivity extends Activity {
     private View clearBtn;
     private TextView hintView;
     private TextView statusView;
+    private TextView errorView;
+    private boolean errorShown = false;
+    private int shownPage = 1;
+    private final Runnable errorHide = new Runnable() {
+        public void run() {
+            if (!errorShown) return;
+            errorShown = false;
+            errorView.setVisibility(View.GONE);
+            if (statusView.getVisibility() != View.VISIBLE) listView.setVisibility(View.VISIBLE);
+        }
+    };
     private GhostTitle ghostTitle;
     private ResultsAdapter adapter;
 
@@ -160,10 +171,15 @@ public class SearchActivity extends Activity {
         statusView.setGravity(Gravity.CENTER);
         statusView.setCompoundDrawablePadding(dp(8));
         statusView.setVisibility(View.GONE);
-        FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
-        slp.topMargin = bar;
-        root.addView(statusView, slp);
+        root.addView(statusView, StatusCenter.params());
+
+        errorView = new TextView(this);
+        errorView.setTextSize(16);
+        errorView.setTextColor(Theme.textSecondary());
+        errorView.setGravity(Gravity.CENTER);
+        errorView.setCompoundDrawablePadding(dp(8));
+        errorView.setVisibility(View.GONE);
+        root.addView(errorView, StatusCenter.params());
 
         hintView = new TextView(this);
         hintView.setTextSize(15);
@@ -177,10 +193,13 @@ public class SearchActivity extends Activity {
                 startFromHint();
             }
         });
-        FrameLayout.LayoutParams hlp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
-        hlp.topMargin = bar;
-        root.addView(hintView, hlp);
+        root.addView(hintView, StatusCenter.params());
+
+        StatusCenter.track(root, new StatusCenter.Source() {
+            public int obstructionPx() {
+                return GhostTitle.heightPx(SearchActivity.this);
+            }
+        }, statusView, errorView, hintView);
     }
 
     private void addSearchField() {
@@ -304,6 +323,7 @@ public class SearchActivity extends Activity {
             if (name == null) return;
             hintCategory = name;
             hintView.setText(buildHintText(name));
+            StatusCenter.place(hintView, root.getHeight(), GhostTitle.heightPx(this));
             hintView.setVisibility(View.VISIBLE);
         }
     }
@@ -475,15 +495,36 @@ public class SearchActivity extends Activity {
         updateHint();
     }
 
+    private void showTransientError() {
+        errorView.removeCallbacks(errorHide);
+        errorView.setText(R.string.status_couldnt_load);
+        errorView.setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.ic_network_error, 0);
+        StatusCenter.place(errorView, root.getHeight(), GhostTitle.heightPx(this));
+        listView.setVisibility(View.INVISIBLE);
+        errorView.setVisibility(View.VISIBLE);
+        errorShown = true;
+        errorView.postDelayed(errorHide, 2000);
+    }
+
+    private void cancelTransientError() {
+        if (!errorShown) return;
+        errorView.removeCallbacks(errorHide);
+        errorShown = false;
+        errorView.setVisibility(View.GONE);
+    }
+
     private void showStatus(int textRes, int iconRes) {
+        cancelTransientError();
         statusView.setText(textRes);
         statusView.setCompoundDrawablesWithIntrinsicBounds(0, 0, iconRes, 0);
+        StatusCenter.place(statusView, root.getHeight(), GhostTitle.heightPx(this));
         statusView.setVisibility(View.VISIBLE);
         listView.setVisibility(View.GONE);
         backing.setVisibility(View.VISIBLE);
     }
 
     private void hideStatus() {
+        cancelTransientError();
         statusView.setVisibility(View.GONE);
         listView.setVisibility(View.VISIBLE);
         backing.setVisibility(View.GONE);
@@ -564,6 +605,7 @@ public class SearchActivity extends Activity {
         loading = false;
         ghostTitle.hideProgress();
         shownQuery = q;
+        shownPage = page;
         hasMore = more;
         hasPrev = prev;
         appList.clear();
@@ -584,9 +626,8 @@ public class SearchActivity extends Activity {
         if (appList.isEmpty() || shownQuery == null || !shownQuery.equals(query)) {
             showStatus(R.string.status_couldnt_load, R.drawable.ic_network_error);
         } else {
-
-            page = Math.max(1, page);
-            hideStatus();
+            page = shownPage;
+            showTransientError();
         }
     }
 

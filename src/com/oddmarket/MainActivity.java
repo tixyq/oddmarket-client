@@ -54,6 +54,7 @@ public class MainActivity extends Activity {
     private EditText searchBox;
     private Button tabApps, tabGames;
     private TextView statusTextView;
+    private View listSpacerView;
     private TextView errorOverlay;
     private boolean errorOverlayShown = false;
     private final Runnable errorHideRunnable = new Runnable() {
@@ -349,11 +350,9 @@ public class MainActivity extends Activity {
         scrollView.setVerticalScrollBarEnabled(true);
         scrollView.addView(originalView);
 
+        listSpacerView = originalView.findViewById(R.id.tabs_list_spacer);
+
         statusTextView = new TextView(this);
-        LinearLayout.LayoutParams tvParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, 0, 1.0f);
-        tvParams.gravity = android.view.Gravity.CENTER_HORIZONTAL;
-        statusTextView.setLayoutParams(tvParams);
         statusTextView.setGravity(android.view.Gravity.CENTER);
         statusTextView.setMinimumHeight(Theme.dpToPx(this, 96));
         statusTextView.setPadding(Theme.dpToPx(this, 16), 0, Theme.dpToPx(this, 16), 0);
@@ -361,9 +360,9 @@ public class MainActivity extends Activity {
         statusTextView.setTextColor(Theme.textSecondary());
         statusTextView.setCompoundDrawablePadding(Theme.dpToPx(this, 2));
         statusTextView.setVisibility(View.GONE);
-        originalView.addView(statusTextView);
 
         rootLayout.addView(scrollView, 0);
+        rootLayout.addView(statusTextView, StatusCenter.params());
 
         errorOverlay = new TextView(this);
         errorOverlay.setGravity(android.view.Gravity.CENTER);
@@ -372,9 +371,13 @@ public class MainActivity extends Activity {
         errorOverlay.setTextColor(Theme.textSecondary());
         errorOverlay.setCompoundDrawablePadding(Theme.dpToPx(this, 2));
         errorOverlay.setVisibility(View.GONE);
-        rootLayout.addView(errorOverlay, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL));
+        rootLayout.addView(errorOverlay, StatusCenter.params());
+
+        StatusCenter.track(rootLayout, new StatusCenter.Source() {
+            public int obstructionPx() {
+                return statusObstructionPx();
+            }
+        }, statusTextView, errorOverlay);
 
         setContentView(rootLayout);
         Theme.applyFonts(rootLayout);
@@ -853,20 +856,18 @@ public class MainActivity extends Activity {
         if (errorOverlay == null || listView == null || scrollView == null) return;
         errorOverlay.removeCallbacks(errorHideRunnable);
 
-        int top = scrollView.getPaddingTop() + listView.getTop();
-        int areaBottom = scrollView.getHeight() > 0 ? scrollView.getHeight()
-                : (rootLayout != null ? rootLayout.getHeight() : 0);
-        int h = Math.max(areaBottom - top, Theme.dpToPx(this, 96));
-        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) errorOverlay.getLayoutParams();
-        lp.topMargin = top;
-        lp.height = h;
-        errorOverlay.setLayoutParams(lp);
+        StatusCenter.place(errorOverlay, rootLayout != null ? rootLayout.getHeight() : 0, statusObstructionPx());
         errorOverlay.setText(textResId);
         errorOverlay.setCompoundDrawablesWithIntrinsicBounds(0, 0, iconResId, 0);
         listView.setVisibility(View.INVISIBLE);
         errorOverlay.setVisibility(View.VISIBLE);
         errorOverlayShown = true;
         errorOverlay.postDelayed(errorHideRunnable, 2000);
+    }
+
+    private int statusObstructionPx() {
+        if (scrollView == null || listSpacerView == null) return 0;
+        return scrollView.getPaddingTop() + listSpacerView.getBottom() - scrollView.getScrollY();
     }
 
     private void cancelTransientError() {
@@ -881,6 +882,7 @@ public class MainActivity extends Activity {
         cancelTransientError();
         statusTextView.setText(textResId);
         statusTextView.setCompoundDrawablesWithIntrinsicBounds(0, 0, iconResId, 0);
+        StatusCenter.place(statusTextView, rootLayout != null ? rootLayout.getHeight() : 0, statusObstructionPx());
         statusTextView.setVisibility(View.VISIBLE);
         hideListViewPreservingScroll();
     }

@@ -22,11 +22,14 @@ public class AppItem {
     }
 
     public String versionLine(Context context) {
-        String line = versionAndroidLine(context);
+        boolean hasMin = minAndroid != null && minAndroid.length() > 0;
         String translatedCategory = Categories.translate(context, category);
-        if (translatedCategory != null) {
-            line += " - " + translatedCategory;
+        boolean hasCategory = translatedCategory != null && translatedCategory.length() > 0;
+        if (hasCategory && hasMin) {
+            return translatedCategory + " (" + Utils.formatMinAndroid(context, minAndroid) + ")";
         }
-        return line;
+        if (hasCategory) return translatedCategory;
+        if (hasMin) return Utils.formatMinAndroid(context, minAndroid);
+        return "";
     }
 }

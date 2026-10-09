@@ -129,4 +129,24 @@
     <string name="notif_download_error_format">Ошибка загрузки: %1$s</string>
     <string name="perf_blur_off">Размытие отключено автоматически для плавной работы. Его можно включить в настройках.</string>
     <string name="perf_anim_off">Анимации отключены автоматически для плавной работы. Их можно включить в настройках.</string>
+
+    <string name="size_b_unit">Б</string>
+    <string name="size_kb_unit">КБ</string>
+    <string name="size_mb_unit">МБ</string>
+    <string name="size_gb_unit">ГБ</string>
+    <string name="info_android">Android</string>
+    <string name="info_unknown">—</string>
+    <string name="info_loading">…</string>
+
+    <string name="category_communication_wrap">Общение</string>
+    <string name="category_entertainment_wrap">Развле-\nчения</string>
+    <string name="category_lifestyle_wrap">Стиль жизни</string>
+    <string name="category_multimedia_wrap">Мульти-\nмедиа</string>
+    <string name="category_productivity_wrap">Продуктив-\nность</string>
+    <string name="category_reference_wrap">Справоч-\nники</string>
+    <string name="category_shopping_wrap">Покупки</string>
+    <string name="category_tools_wrap">Инстру-\nменты</string>
+    <string name="category_travel_wrap">Путеше-\nствия</string>
+    <string name="category_casual_wrap">Казуаль-\nные</string>
+    <string name="category_brain_puzzle_wrap">Голово-\nломки</string>
 </resources>

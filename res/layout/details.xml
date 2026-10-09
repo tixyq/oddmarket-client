@@ -23,42 +23,60 @@
             android:layout_height="wrap_content">
 
             <LinearLayout
-                android:id="@+id/details_meta_block"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
+                android:id="@+id/details_left_column"
+                android:orientation="vertical"
                 android:layout_width="fill_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1.0">
-
-                <ImageView
-                    android:id="@+id/details_icon"
-                    android:layout_width="72dp"
-                    android:layout_height="72dp"
-                    android:layout_marginRight="12dp"
-                    android:scaleType="fitCenter" />
+                android:layout_height="wrap_content">
 
                 <LinearLayout
-                    android:orientation="vertical"
+                    android:id="@+id/details_meta_block"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
                     android:layout_width="fill_parent"
                     android:layout_height="wrap_content">
-                    <TextView
-                        android:id="@+id/details_name"
-                        android:textSize="20sp"
-                        android:textStyle="bold"
+
+                    <ImageView
+                        android:id="@+id/details_icon"
+                        android:layout_width="72dp"
+                        android:layout_height="72dp"
+                        android:layout_marginRight="12dp"
+                        android:scaleType="fitCenter" />
+
+                    <LinearLayout
+                        android:orientation="vertical"
                         android:layout_width="fill_parent"
-                        android:layout_height="wrap_content" />
-                    <TextView
-                        android:id="@+id/details_version"
-                        android:textSize="14sp"
-                        android:layout_width="fill_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp" />
-                    <TextView
-                        android:id="@+id/details_category"
-                        android:textSize="14sp"
-                        android:layout_width="fill_parent"
-                        android:layout_height="wrap_content" />
+                        android:layout_height="wrap_content">
+                        <TextView
+                            android:id="@+id/details_name"
+                            android:textSize="20sp"
+                            android:textStyle="bold"
+                            android:layout_width="fill_parent"
+                            android:layout_height="wrap_content" />
+                        <TextView
+                            android:id="@+id/details_version"
+                            android:textSize="14sp"
+                            android:layout_width="fill_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp" />
+                    </LinearLayout>
                 </LinearLayout>
+
+                <HorizontalScrollView
+                    android:id="@+id/details_info_scroll"
+                    android:layout_width="fill_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:scrollbars="none"
+                    android:fadingEdge="none"
+                    android:fillViewport="true"
+                    android:focusable="false">
+                    <LinearLayout
+                        android:id="@+id/details_info_row"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </HorizontalScrollView>
             </LinearLayout>
 
             <LinearLayout
@@ -145,6 +163,15 @@
                 android:id="@+id/details_reviews_container"
                 android:layout_width="fill_parent"
                 android:layout_height="wrap_content"
+                android:visibility="gone" />
+
+            <com.oddmarket.ReviewsSpinner
+                android:id="@+id/details_reviews_spinner"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="12dp"
+                android:layout_marginBottom="20dp"
                 android:visibility="gone" />
 
         </LinearLayout>

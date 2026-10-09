@@ -37,7 +37,8 @@ public class WidgetUpdateWorker {
         applyWidgetTheme(views);
 
         try {
-            String jsonStr = Utils.downloadString("http://odd.txy-50b.workers.dev/?page=1&tab=all", 8000);
+            String jsonStr = Utils.downloadString("http://odd.txy-50b.workers.dev/?page=1&tab=all&sdk="
+                    + android.os.Build.VERSION.SDK_INT, 8000);
             JSONObject response = new JSONObject(jsonStr);
             JSONArray items = response.optJSONArray("items");
 

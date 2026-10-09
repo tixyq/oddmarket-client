@@ -187,7 +187,27 @@ public class GhostTitle extends View {
     private static final long SCROLL_RECENT_MS = 120L;
     private long lastScrollMs = 0L;
 
+    private boolean hasScrollRoom() {
+        if (!(scrollTarget instanceof ViewGroup)) return true;
+        ViewGroup g = (ViewGroup) scrollTarget;
+        if (g.getChildCount() == 0 || g.getHeight() <= 0) return scrollRoomOk;
+        View child = g.getChildAt(0);
+        int range = child.getHeight() + g.getPaddingTop() + g.getPaddingBottom() - g.getHeight();
+        return range >= barPx;
+    }
+
+    private void updateScrollRoom() {
+        if (scrollTarget == null || mode != MODE_AUTO) return;
+        boolean ok = hasScrollRoom();
+        if (ok == scrollRoomOk) return;
+        scrollRoomOk = ok;
+        lastScrollY = scrollTarget.getScrollY();
+        syncToScroll(lastScrollY);
+        invalidate();
+    }
+
     private void sampleScrollFrame() {
+        updateScrollRoom();
         if (SystemClock.uptimeMillis() - lastScrollMs > SCROLL_RECENT_MS) return;
         if (PerfGuard.onMovingFrame(getContext())) {
             post(new Runnable() {
@@ -230,6 +250,7 @@ public class GhostTitle extends View {
     private View scrollTarget;
     private int lastScrollY = 0;
     private int titleScrollPx = 0;
+    private boolean scrollRoomOk = true;
 
     private final ViewTreeObserver.OnScrollChangedListener scrollListener =
             new ViewTreeObserver.OnScrollChangedListener() {
@@ -424,6 +445,7 @@ public class GhostTitle extends View {
 
     public GhostTitle trackScroll(View v) {
         scrollTarget = v;
+        scrollRoomOk = true;
         lastScrollY = (v != null) ? v.getScrollY() : 0;
         if (mode == MODE_AUTO) syncToScroll(lastScrollY);
         return this;
@@ -542,6 +564,10 @@ public class GhostTitle extends View {
         }
     }
 
+    public int lineAlpha() {
+        return (blurEnabled && !blurBroken) ? 255 - GLASS_SEE_THROUGH : 255;
+    }
+
     public void refreshAnimEnabled() {
         boolean on = Utils.isAnimEnabled(getContext());
         if (on == animEnabled) return;
@@ -599,10 +625,12 @@ public class GhostTitle extends View {
         }
         if (y == lastScrollY) return;
         lastScrollY = y;
+        updateScrollRoom();
         syncToScroll(y);
     }
 
     private void syncToScroll(int y) {
+        if (!scrollRoomOk) y = 0;
         float p = (y <= 0) ? 0f : Math.min(1f, y / (float) barPx);
         int oldPx = titleScrollPx;
         titleScrollPx = (y <= 0) ? 0 : Math.min(y, barPx);
