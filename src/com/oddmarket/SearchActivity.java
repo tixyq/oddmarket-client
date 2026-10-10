@@ -92,6 +92,7 @@ public class SearchActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        SingleInstance.claim(this);
         FileLogger.init(this);
         GhostTitle.prepareWindow(this);
         paintWindow();
@@ -165,24 +166,14 @@ public class SearchActivity extends Activity {
         root.addView(listView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.FILL_PARENT));
 
-        statusView = new TextView(this);
-        statusView.setTextSize(16);
-        statusView.setTextColor(Theme.textSecondary());
-        statusView.setGravity(Gravity.CENTER);
-        statusView.setCompoundDrawablePadding(dp(8));
-        statusView.setVisibility(View.GONE);
+        statusView = StatusCenter.create(this);
         root.addView(statusView, StatusCenter.params());
 
-        errorView = new TextView(this);
-        errorView.setTextSize(16);
-        errorView.setTextColor(Theme.textSecondary());
-        errorView.setGravity(Gravity.CENTER);
-        errorView.setCompoundDrawablePadding(dp(8));
-        errorView.setVisibility(View.GONE);
+        errorView = StatusCenter.create(this);
         root.addView(errorView, StatusCenter.params());
 
         hintView = new TextView(this);
-        hintView.setTextSize(15);
+        hintView.setTextSize(16.5f);
         hintView.setTextColor(Theme.textSecondary());
         hintView.setGravity(Gravity.CENTER);
         hintView.setPadding(dp(16), dp(12), dp(16), dp(12));
@@ -497,11 +488,8 @@ public class SearchActivity extends Activity {
 
     private void showTransientError() {
         errorView.removeCallbacks(errorHide);
-        errorView.setText(R.string.status_couldnt_load);
-        errorView.setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.ic_network_error, 0);
-        StatusCenter.place(errorView, root.getHeight(), GhostTitle.heightPx(this));
+        StatusCenter.show(errorView, root, GhostTitle.heightPx(this), R.string.status_couldnt_load, R.drawable.ic_network_error);
         listView.setVisibility(View.INVISIBLE);
-        errorView.setVisibility(View.VISIBLE);
         errorShown = true;
         errorView.postDelayed(errorHide, 2000);
     }
@@ -515,10 +503,7 @@ public class SearchActivity extends Activity {
 
     private void showStatus(int textRes, int iconRes) {
         cancelTransientError();
-        statusView.setText(textRes);
-        statusView.setCompoundDrawablesWithIntrinsicBounds(0, 0, iconRes, 0);
-        StatusCenter.place(statusView, root.getHeight(), GhostTitle.heightPx(this));
-        statusView.setVisibility(View.VISIBLE);
+        StatusCenter.show(statusView, root, GhostTitle.heightPx(this), textRes, iconRes);
         listView.setVisibility(View.GONE);
         backing.setVisibility(View.VISIBLE);
     }
@@ -648,6 +633,7 @@ public class SearchActivity extends Activity {
     @Override
     protected void onDestroy() {
         destroyed = true;
+        SingleInstance.release(this);
         super.onDestroy();
     }
 
@@ -857,7 +843,7 @@ public class SearchActivity extends Activity {
             });
         }
 
-        private static final float RATING_STAR_RELATIVE_SIZE = 20f / 14f;
+        private static final float RATING_STAR_RELATIVE_SIZE = 16f / 14f;
         private static final int RATING_STAR_COLOR = Theme.PROGRESS_COLOR;
 
         private void bindRating(TextView txtRating, String pkg) {

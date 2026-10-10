@@ -41,6 +41,7 @@ public class WebActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        SingleInstance.claim(this);
         FileLogger.init(this);
         FileLogger.i(Utils.TAG, "WebActivity.onCreate url=" + getIntent().getStringExtra("url"));
         GhostTitle.prepareWindow(this);
@@ -234,6 +235,7 @@ public class WebActivity extends Activity {
         }
 
         CookieHelper.flush();
+        SingleInstance.release(this);
         super.onDestroy();
     }
 

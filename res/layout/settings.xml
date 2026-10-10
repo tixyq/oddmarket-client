@@ -142,10 +142,24 @@
             </LinearLayout>
 
             <TextView
-                android:id="@+id/settings_btn_send_log"
+                android:id="@+id/settings_btn_check_updates"
                 android:layout_width="fill_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:text="@string/menu_check_updates"
+                android:textSize="18sp"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="@drawable/list_item_selector"
+                android:tag="soft_row" />
+
+            <TextView
+                android:id="@+id/settings_btn_send_log"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
                 android:paddingTop="8dp"
                 android:paddingBottom="8dp"
                 android:text="@string/settings_send_log_label"

@@ -24,9 +24,9 @@
     <string name="rating_format">Rating %1$s</string>
 
     <string name="menu_refresh">Refresh</string>
+    <string name="menu_manage_apps">Manage apps</string>
     <string name="menu_check_updates">Check updates</string>
     <string name="menu_preferences">Preferences</string>
-    <string name="update_available_message">An update is available, please update the client.</string>
     <string name="btn_update">Update</string>
     <string name="menu_login">Log in</string>
     <string name="menu_register">Register</string>
@@ -149,4 +149,21 @@
     <string name="category_travel_wrap">Travel</string>
     <string name="category_casual_wrap">Casual</string>
     <string name="category_brain_puzzle_wrap">Brain &amp; Puzzle</string>
+
+    <string name="manage_selected">Selected (%d)</string>
+    <string name="manage_menu_clear">Clear selection</string>
+    <string name="manage_menu_invert">Invert selection</string>
+    <string name="manage_update_available">Available update %1$s</string>
+    <string name="manage_yes">Yes</string>
+    <string name="manage_no">No</string>
+    <string name="toast_operation_declined">Operation declined</string>
+    <plurals name="manage_delete_confirm">
+        <item quantity="one">Are you sure you want to delete %d app?</item>
+        <item quantity="other">Are you sure you want to delete %d apps?</item>
+    </plurals>
+    <string name="notif_channel_updates">Updates</string>
+    <plurals name="notif_updates_available">
+        <item quantity="one">Available %d update</item>
+        <item quantity="other">Available %d updates</item>
+    </plurals>
 </resources>

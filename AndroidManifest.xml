@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.oddmarket"
-    android:versionCode="26100802"
-    android:versionName="7.2.2">
+    android:versionCode="26101002"
+    android:versionName="7.3.2">
 
     <uses-sdk android:minSdkVersion="4" android:targetSdkVersion="34" />
 
@@ -13,6 +13,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <queries>
         <intent>
@@ -107,12 +108,22 @@
         <activity android:name=".SearchActivity" android:exported="false"
             android:windowSoftInputMode="stateHidden|adjustResize" />
         <activity android:name=".SettingsActivity" android:exported="false" />
+        <activity android:name=".ManageAppsActivity" android:exported="false" />
 
         <provider
             android:name=".ApkProvider"
             android:authorities="com.oddmarket.provider"
             android:exported="false"
             android:grantUriPermissions="true" />
+
+        <receiver
+            android:name=".UpdateCheckReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <receiver
             android:name=".LatestAppsWidgetProvider"

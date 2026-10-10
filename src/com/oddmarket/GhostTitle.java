@@ -416,6 +416,22 @@ public class GhostTitle extends View {
         return this;
     }
 
+    private Runnable logoAction;
+    private boolean logoShown;
+    private boolean logoPressed;
+    private final RectF logoHit = new RectF();
+
+    public GhostTitle setLogoAction(Runnable action) {
+        logoAction = action;
+        return this;
+    }
+
+    private boolean logoContains(float x, float y, float slop) {
+        return logoShown && logoAction != null
+                && x >= logoHit.left - slop && x < logoHit.right + slop
+                && y >= 0f && y < barBottom() + slop;
+    }
+
     public GhostTitle setSearchVisible(boolean visible) {
         showSearch = visible;
         layoutDirty = true;
@@ -746,6 +762,7 @@ public class GhostTitle extends View {
 
         CharSequence text = null;
         float titleX = 0f;
+        logoShown = false;
         if (titleBmp != null) {
             if (titleAlpha > 0) {
                 float vpad = TITLE_IMG_VPAD_DP * density;
@@ -765,7 +782,11 @@ public class GhostTitle extends View {
                 titleBmpSrc.set(0, 0, titleBmp.getWidth(), titleBmp.getHeight());
                 titleBmpDst.set(left, top, left + iw, top + ih);
                 titleBmpPaint.setAlpha(titleAlpha);
-                if (iw > 0f) c.drawBitmap(titleBmp, titleBmpSrc, titleBmpDst, titleBmpPaint);
+                if (iw > 0f) {
+                    c.drawBitmap(titleBmp, titleBmpSrc, titleBmpDst, titleBmpPaint);
+                    logoHit.set(left, top, left + iw, top + ih);
+                    logoShown = true;
+                }
             }
         } else if (title != null && title.length() > 0 && titleAlpha > 0) {
 
@@ -1050,10 +1071,13 @@ public class GhostTitle extends View {
         switch (action) {
             case MotionEvent.ACTION_DOWN: {
 
-                setPressedBtn(hit(x, y, 0));
+                Btn down = hit(x, y, 0);
+                setPressedBtn(down);
+                logoPressed = down == null && logoContains(x, y, slopPx);
                 return true;
             }
             case MotionEvent.ACTION_MOVE: {
+                if (logoPressed && !logoContains(x, y, 16 * density)) logoPressed = false;
                 if (pressed == null) return true;
                 boolean inside = contains(pressed, x, y, (int) (16 * density));
                 if (!inside) {
@@ -1064,13 +1088,19 @@ public class GhostTitle extends View {
             case MotionEvent.ACTION_UP: {
                 Btn b = pressed;
                 setPressedBtn(null);
+                boolean logoFire = logoPressed && logoContains(x, y, 16 * density);
+                logoPressed = false;
                 if (b != null) {
                     fire(b);
+                } else if (logoFire) {
+                    playSoundEffect(SoundEffectConstants.CLICK);
+                    logoAction.run();
                 }
                 return true;
             }
             case MotionEvent.ACTION_CANCEL:
                 setPressedBtn(null);
+                logoPressed = false;
                 return true;
             default:
                 return true;

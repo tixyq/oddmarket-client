@@ -68,7 +68,7 @@ public final class PopupMenuCompat {
         }
     }
 
-    private static AlertDialog.Builder newBuilder(Activity activity) {
+    static AlertDialog.Builder newBuilder(Activity activity) {
         int sdk = android.os.Build.VERSION.SDK_INT;
         if (sdk >= 11) {
 

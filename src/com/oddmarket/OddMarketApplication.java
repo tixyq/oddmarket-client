@@ -69,6 +69,38 @@ public class OddMarketApplication extends Application {
 
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         Theme.init(this, prefs);
+
+        UpdateScheduler.ensureScheduled(this);
+        registerPackageEvents();
+    }
+
+    private void registerPackageEvents() {
+        try {
+            android.content.IntentFilter f = new android.content.IntentFilter();
+            f.addAction(android.content.Intent.ACTION_PACKAGE_ADDED);
+            f.addAction(android.content.Intent.ACTION_PACKAGE_REMOVED);
+            f.addAction(android.content.Intent.ACTION_PACKAGE_REPLACED);
+            f.addDataScheme("package");
+            registerReceiver(new android.content.BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, android.content.Intent intent) {
+                    UpdateChecker.checkNowAsync(context);
+                }
+            }, f);
+        } catch (Throwable t) {
+            FileLogger.w(Utils.TAG, "registerPackageEvents failed", t);
+        }
+    }
+
+    @Override
+    public void onLowMemory() {
+        super.onLowMemory();
+        MainActivity.trimMemory(true);
+    }
+
+    public void onTrimMemory(int level) {
+        if (level >= 60) MainActivity.trimMemory(true);
+        else if (level >= 40) MainActivity.trimMemory(false);
     }
 
     @Override

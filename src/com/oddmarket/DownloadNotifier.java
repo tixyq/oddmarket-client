@@ -16,7 +16,9 @@ final class DownloadNotifier {
     static final int ID_RANGE = 100;
     static final int ID_QUEUED_BASE = 5000;
     static final int ID_DONE_BASE = 6000;
+    static final int ID_UPDATES = 4712;
     private static final String CHANNEL_ID = "oddmarket_downloads";
+    private static final String CHANNEL_UPDATES = "oddmarket_updates";
     private static final int FLAG_IMMUTABLE_COMPAT = 0x02000000;
 
     private DownloadNotifier() {}
@@ -40,15 +42,17 @@ final class DownloadNotifier {
         return PendingIntent.getActivity(c, requestCode, intent, flags);
     }
 
-    private static boolean channelCreated = false;
+    private static final java.util.HashSet<String> channelsCreated = new java.util.HashSet<String>();
 
-    private static void ensureChannel(Context c) {
-        if (channelCreated || android.os.Build.VERSION.SDK_INT < 26) return;
-        channelCreated = true;
+    private static void ensureChannel(Context c, String channelId) {
+        if (android.os.Build.VERSION.SDK_INT < 26 || !channelsCreated.add(channelId)) return;
         try {
+            boolean updates = CHANNEL_UPDATES.equals(channelId);
             Class<?> chCls = Class.forName("android.app.NotificationChannel");
             Constructor<?> ctor = chCls.getConstructor(String.class, CharSequence.class, int.class);
-            Object channel = ctor.newInstance(CHANNEL_ID, c.getString(R.string.notif_channel_downloads), 2 );
+            Object channel = ctor.newInstance(channelId,
+                    c.getString(updates ? R.string.notif_channel_updates : R.string.notif_channel_downloads),
+                    2 );
             Method create = NotificationManager.class.getMethod("createNotificationChannel", chCls);
             create.invoke(notificationManager(c), channel);
         } catch (Throwable t) {
@@ -61,6 +65,7 @@ final class DownloadNotifier {
     private static final int ICON_PROGRESS = android.R.drawable.stat_sys_download;
     private static final int ICON_DONE = android.R.drawable.stat_sys_download_done;
     private static final int ICON_ERROR = android.R.drawable.stat_notify_error;
+    private static final int ICON_UPDATES = android.R.drawable.stat_notify_sync;
 
     static Notification buildProgress(Context c, DownloadCenter.Item item) {
         return buildProgress(c, item, DownloadCenter.getProgress(), DownloadCenter.isIndeterminate());
@@ -138,6 +143,18 @@ final class DownloadNotifier {
                 true, System.currentTimeMillis(), null, openPage(c, null, ID_PROGRESS));
     }
 
+    static void showUpdates(Context c, String title, String text, PendingIntent open) {
+        Notification n = buildOnChannel(CHANNEL_UPDATES, c, title, text, ICON_UPDATES, false,
+                System.currentTimeMillis(), null, open, NO_PROGRESS);
+        if (n == null) return;
+        n.flags |= Notification.FLAG_AUTO_CANCEL;
+        postNotification(c, ID_UPDATES, n);
+    }
+
+    static void cancelUpdates(Context c) {
+        cancelNotification(c, ID_UPDATES);
+    }
+
     static void cancelProgress(Context c) {
         cancelNotification(c, ID_PROGRESS);
     }
@@ -166,17 +183,23 @@ final class DownloadNotifier {
     private static Notification buildWithProgress(Context c, String title, String text, int icon,
                                       boolean ongoing, long when, android.graphics.Bitmap largeIcon,
                                       PendingIntent open, int progress) {
+        return buildOnChannel(CHANNEL_ID, c, title, text, icon, ongoing, when, largeIcon, open, progress);
+    }
+
+    private static Notification buildOnChannel(String channelId, Context c, String title, String text, int icon,
+                                      boolean ongoing, long when, android.graphics.Bitmap largeIcon,
+                                      PendingIntent open, int progress) {
         try {
 
             if (progress != NO_PROGRESS && android.os.Build.VERSION.SDK_INT < 14) {
                 return buildLegacyProgress(c, title, text, icon, when, open, progress);
             }
             if (android.os.Build.VERSION.SDK_INT >= 11) {
-                ensureChannel(c);
+                ensureChannel(c, channelId);
                 Class<?> bCls = Class.forName("android.app.Notification$Builder");
                 Object b;
                 if (android.os.Build.VERSION.SDK_INT >= 26) {
-                    b = bCls.getConstructor(Context.class, String.class).newInstance(c, CHANNEL_ID);
+                    b = bCls.getConstructor(Context.class, String.class).newInstance(c, channelId);
                 } else {
                     b = bCls.getConstructor(Context.class).newInstance(c);
                 }

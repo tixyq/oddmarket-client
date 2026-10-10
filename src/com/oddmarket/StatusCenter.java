@@ -1,10 +1,12 @@
 package com.oddmarket;
 
+import android.content.Context;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
+import android.widget.TextView;
 
 final class StatusCenter {
     interface Source {
@@ -14,6 +16,33 @@ final class StatusCenter {
     private static final int HALF_BOX_DP = 48;
 
     private StatusCenter() {
+    }
+
+    static TextView create(Context c) {
+        TextView t = new TextView(c);
+        t.setGravity(Gravity.CENTER);
+        t.setMinimumHeight(Theme.dpToPx(c, 96));
+        t.setPadding(Theme.dpToPx(c, 16), 0, Theme.dpToPx(c, 16), 0);
+        t.setTextSize(18);
+        t.setTextColor(Theme.textSecondary());
+        t.setCompoundDrawablePadding(Theme.dpToPx(c, 2));
+        Theme.applyFont(t);
+        t.setVisibility(View.GONE);
+        return t;
+    }
+
+    static TextView attach(FrameLayout host, Source source) {
+        TextView t = create(host.getContext());
+        host.addView(t, params());
+        track(host, source, t);
+        return t;
+    }
+
+    static void show(TextView v, View host, int obstructionPx, int textResId, int iconResId) {
+        v.setText(textResId);
+        v.setCompoundDrawablesWithIntrinsicBounds(0, 0, iconResId, 0);
+        place(v, host != null ? host.getHeight() : 0, obstructionPx);
+        v.setVisibility(View.VISIBLE);
     }
 
     static FrameLayout.LayoutParams params() {

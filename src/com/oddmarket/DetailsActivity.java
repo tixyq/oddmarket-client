@@ -39,6 +39,8 @@ import android.widget.ScrollView;
 import android.util.Log;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class DetailsActivity extends Activity {
 
@@ -73,6 +75,7 @@ public class DetailsActivity extends Activity {
 
     private static final int MENU_ID_SHARE = 1;
     private static final int MENU_ID_UNINSTALL = 2;
+    private static final int MENU_ID_OPEN = 3;
 
     private static final String SELF_PACKAGE = "com.oddmarket";
 
@@ -144,13 +147,112 @@ public class DetailsActivity extends Activity {
                 ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.FILL_PARENT));
 
         applyResponsiveHeaderLayout();
+
+        if (getIntent().getBooleanExtra(EXTRA_FETCH, false)) {
+            currentPkg = getIntent().getStringExtra("pkg");
+            if (currentPkg == null) currentPkg = "";
+            startRemoteLoad();
+        } else {
+            initContent();
+        }
+    }
+
+    static final String EXTRA_FETCH = "fetch_by_pkg";
+    private TextView statusView;
+
+    static void openByPackage(Context context, String pkg) {
+        Intent intent = new Intent(context, DetailsActivity.class);
+        intent.putExtra("pkg", pkg);
+        intent.putExtra(EXTRA_FETCH, true);
+        context.startActivity(intent);
+    }
+
+    private void initContent() {
         bindIntentData();
         wireDownloadButton();
         buildScreenshotsRow();
         startFullImageSequence();
         buildReviewsWebView();
 
+        updateButtonState();
+
         btnDownload.requestFocus();
+    }
+
+    private void showPageStatus(int textResId, int iconResId) {
+        if (statusView == null) {
+            statusView = StatusCenter.attach(rootLayout, new StatusCenter.Source() {
+                public int obstructionPx() {
+                    return GhostTitle.heightPx(DetailsActivity.this);
+                }
+            });
+        }
+        StatusCenter.show(statusView, rootLayout, GhostTitle.heightPx(this), textResId, iconResId);
+    }
+
+    private void startRemoteLoad() {
+        final View content = rootLayout.getChildAt(0);
+        content.setVisibility(View.INVISIBLE);
+        showPageStatus(R.string.status_loading, 0);
+        if (ghostTitle != null) ghostTitle.showProgressIndeterminate();
+
+        final String pkg = currentPkg;
+        Thread th = new Thread(new Runnable() {
+            public void run() {
+                final JSONObject obj;
+                int errRes = 0;
+                JSONObject found = null;
+                try {
+                    String jsonStr = Utils.downloadString("http://odd.txy-50b.workers.dev/?pkg=" + Uri.encode(pkg));
+                    JSONArray items = new JSONObject(jsonStr).optJSONArray("items");
+                    if (items != null && items.length() > 0) {
+                        found = items.getJSONObject(0);
+                    } else {
+                        errRes = R.string.status_app_not_found;
+                    }
+                } catch (Exception e) {
+                    FileLogger.w(Utils.TAG, "Failed to load app " + pkg, e);
+                    errRes = R.string.status_couldnt_load;
+                }
+                obj = found;
+                final int err = errRes;
+                handler.post(new Runnable() {
+                    public void run() {
+                        if (destroyed || isFinishing()) return;
+                        if (ghostTitle != null) ghostTitle.hideProgress();
+                        if (obj == null) {
+                            showPageStatus(err, err == R.string.status_couldnt_load ? R.drawable.ic_network_error : 0);
+                            return;
+                        }
+                        applyFetchedApp(obj);
+                        statusView.setVisibility(View.GONE);
+                        content.setVisibility(View.VISIBLE);
+                        initContent();
+                    }
+                });
+            }
+        }, "app-fetch");
+        th.setDaemon(true);
+        th.start();
+    }
+
+    private void applyFetchedApp(JSONObject obj) {
+        Intent intent = getIntent();
+        intent.putExtra("pkg", obj.optString("pkg", currentPkg));
+        intent.putExtra("name", obj.optString("name", getString(R.string.unknown)));
+        intent.putExtra("version", obj.optString("version", ""));
+        intent.putExtra("min_android", obj.optString("min_android", ""));
+        intent.putExtra("icon", obj.optString("icon", ""));
+        intent.putExtra("category", obj.optString("category", ""));
+        intent.putExtra("description", obj.optString("description", ""));
+        intent.putExtra("download_url", obj.optString("download_url", ""));
+        ArrayList<String> shots = new ArrayList<String>();
+        JSONArray screens = obj.optJSONArray("screenshots");
+        if (screens != null) {
+            for (int j = 0; j < screens.length(); j++) shots.add(screens.optString(j));
+        }
+        intent.putStringArrayListExtra("screenshots", shots);
+        intent.putExtra(EXTRA_FETCH, false);
     }
 
     private void buildLayout() {
@@ -461,12 +563,7 @@ public class DetailsActivity extends Activity {
                 if (isDownloadingThisApp()) {
                     DownloadCenter.cancel(DetailsActivity.this, currentPkg, appName);
                 } else if (btnState == STATE_OPEN) {
-                    Intent launchIntent = getPackageManager().getLaunchIntentForPackage(currentPkg);
-                    if (launchIntent != null) {
-                        startActivity(launchIntent);
-                    } else {
-                        Toast.makeText(DetailsActivity.this, R.string.toast_cannot_open_app, Toast.LENGTH_SHORT).show();
-                    }
+                    openInstalledApp();
                 } else {
                     if (downloadUrl != null && downloadUrl.length() > 0) {
                         boolean isLegacy = MainActivity.isLegacyDownloadActive(DetailsActivity.this);
@@ -1236,6 +1333,15 @@ public class DetailsActivity extends Activity {
         }
     }
 
+    private void openInstalledApp() {
+        Intent launchIntent = getPackageManager().getLaunchIntentForPackage(currentPkg);
+        if (launchIntent != null) {
+            startActivity(launchIntent);
+        } else {
+            Toast.makeText(this, R.string.toast_cannot_open_app, Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private void updateButtonState() {
         boolean isLegacy = MainActivity.isLegacyDownloadActive(this);
 
@@ -1273,18 +1379,26 @@ public class DetailsActivity extends Activity {
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-        MenuItem itemShare = menu.add(0, MENU_ID_SHARE, 0, R.string.menu_share);
-        itemShare.setIcon(android.R.drawable.ic_menu_share);
-        Utils.showInActionBar(itemShare, Utils.SHOW_AS_ACTION_NEVER);
+        MenuItem itemOpen = menu.add(0, MENU_ID_OPEN, 0, R.string.btn_state_open);
+        Utils.showInActionBar(itemOpen, Utils.SHOW_AS_ACTION_NEVER);
 
         MenuItem itemUninstall = menu.add(0, MENU_ID_UNINSTALL, 1, R.string.menu_uninstall);
         Utils.showInActionBar(itemUninstall, Utils.SHOW_AS_ACTION_NEVER);
+
+        MenuItem itemShare = menu.add(0, MENU_ID_SHARE, 2, R.string.menu_share);
+        itemShare.setIcon(android.R.drawable.ic_menu_share);
+        Utils.showInActionBar(itemShare, Utils.SHOW_AS_ACTION_NEVER);
 
         return super.onCreateOptionsMenu(menu);
     }
 
     @Override
     public boolean onPrepareOptionsMenu(Menu menu) {
+        MenuItem itemOpen = menu.findItem(MENU_ID_OPEN);
+        if (itemOpen != null) {
+
+            itemOpen.setVisible(btnState == STATE_UPDATE && isCurrentPackageInstalled());
+        }
         MenuItem itemUninstall = menu.findItem(MENU_ID_UNINSTALL);
         if (itemUninstall != null) {
             itemUninstall.setVisible(!isSelfPackage() && isCurrentPackageInstalled());
@@ -1313,6 +1427,11 @@ public class DetailsActivity extends Activity {
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         if (Utils.handleHomeMenuItem(this, item)) {
+            return true;
+        }
+
+        if (item.getItemId() == MENU_ID_OPEN) {
+            openInstalledApp();
             return true;
         }
 

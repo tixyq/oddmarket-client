@@ -36,6 +36,7 @@ import android.widget.FrameLayout;
 import android.util.Log;
 import org.json.JSONObject;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -98,8 +99,6 @@ public class MainActivity extends Activity {
     private boolean isLoading = false;
     private int requestSeq = 0;
 
-    private AlertDialog updateDialog;
-
     private boolean isDestroyed = false;
 
     private static final long ACCOUNT_CHECK_THROTTLE_MS = 30000;
@@ -155,23 +154,21 @@ public class MainActivity extends Activity {
             currentBytes = 0;
         }
 
-        synchronized boolean containsKey(String key) {
-            return map.containsKey(key);
-        }
-
         synchronized Bitmap get(String key) {
             return map.get(key);
         }
 
         synchronized void put(String key, Bitmap value) {
+            if (value == null) return;
+            if (sizeOf(value) > maxBytes / 2) return;
             Bitmap old = map.put(key, value);
             currentBytes += sizeOf(value) - sizeOf(old);
-            trim();
+            trimTo(maxBytes);
         }
 
-        private void trim() {
+        synchronized void trimTo(int limit) {
             Iterator<Map.Entry<String, Bitmap>> it = map.entrySet().iterator();
-            while (currentBytes > maxBytes && it.hasNext()) {
+            while (currentBytes > limit && it.hasNext()) {
                 Map.Entry<String, Bitmap> eldest = it.next();
                 currentBytes -= sizeOf(eldest.getValue());
                 it.remove();
@@ -179,7 +176,13 @@ public class MainActivity extends Activity {
         }
     }
 
-    public static final IconCache iconCache = new IconCache(6 * 1024 * 1024);
+    private static int iconCacheLimit() {
+        long max = Runtime.getRuntime().maxMemory();
+        long limit = Math.min(12L * 1024 * 1024, max / 8);
+        return (int) Math.max(3L * 1024 * 1024, limit);
+    }
+
+    public static final IconCache iconCache = new IconCache(iconCacheLimit());
     private static final IconCache fullCache = new IconCache(fullCacheLimit());
 
     private class AspectImageView extends ImageView {
@@ -352,25 +355,10 @@ public class MainActivity extends Activity {
 
         listSpacerView = originalView.findViewById(R.id.tabs_list_spacer);
 
-        statusTextView = new TextView(this);
-        statusTextView.setGravity(android.view.Gravity.CENTER);
-        statusTextView.setMinimumHeight(Theme.dpToPx(this, 96));
-        statusTextView.setPadding(Theme.dpToPx(this, 16), 0, Theme.dpToPx(this, 16), 0);
-        statusTextView.setTextSize(18);
-        statusTextView.setTextColor(Theme.textSecondary());
-        statusTextView.setCompoundDrawablePadding(Theme.dpToPx(this, 2));
-        statusTextView.setVisibility(View.GONE);
-
         rootLayout.addView(scrollView, 0);
+        statusTextView = StatusCenter.create(this);
         rootLayout.addView(statusTextView, StatusCenter.params());
-
-        errorOverlay = new TextView(this);
-        errorOverlay.setGravity(android.view.Gravity.CENTER);
-        errorOverlay.setPadding(Theme.dpToPx(this, 16), 0, Theme.dpToPx(this, 16), 0);
-        errorOverlay.setTextSize(18);
-        errorOverlay.setTextColor(Theme.textSecondary());
-        errorOverlay.setCompoundDrawablePadding(Theme.dpToPx(this, 2));
-        errorOverlay.setVisibility(View.GONE);
+        errorOverlay = StatusCenter.create(this);
         rootLayout.addView(errorOverlay, StatusCenter.params());
 
         StatusCenter.track(rootLayout, new StatusCenter.Source() {
@@ -388,7 +376,11 @@ public class MainActivity extends Activity {
                         startActivity(new Intent(MainActivity.this, SearchActivity.class));
                     }
                 })
-
+                .setLogoAction(new Runnable() {
+                    public void run() {
+                        reloadAll();
+                    }
+                })
                 .setMode(GhostTitle.MODE_NORMAL).setBaseColor(bgColor()).trackScroll(scrollView);
 
         ghostTitle.setTitleImage(getResources().getIdentifier("dm", "drawable", getPackageName()));
@@ -648,7 +640,7 @@ public class MainActivity extends Activity {
         if (downloadUi == null) downloadUi = new DownloadUi(this, ghostTitle, null);
         downloadUi.start();
         FileLogger.i(Utils.TAG, "MainActivity.onResume");
-        checkForClientUpdate();
+        UpdateChecker.checkNowAsync(this);
 
         boolean currentRussianDomainState = isRussianDomainActive(this);
         if (lastRussianDomainState != currentRussianDomainState) {
@@ -785,9 +777,6 @@ public class MainActivity extends Activity {
             pendingDeleteAccount.cancel();
             pendingDeleteAccount = null;
         }
-        if (updateDialog != null && updateDialog.isShowing()) {
-            updateDialog.dismiss();
-        }
         super.onDestroy();
     }
 
@@ -856,11 +845,8 @@ public class MainActivity extends Activity {
         if (errorOverlay == null || listView == null || scrollView == null) return;
         errorOverlay.removeCallbacks(errorHideRunnable);
 
-        StatusCenter.place(errorOverlay, rootLayout != null ? rootLayout.getHeight() : 0, statusObstructionPx());
-        errorOverlay.setText(textResId);
-        errorOverlay.setCompoundDrawablesWithIntrinsicBounds(0, 0, iconResId, 0);
+        StatusCenter.show(errorOverlay, rootLayout, statusObstructionPx(), textResId, iconResId);
         listView.setVisibility(View.INVISIBLE);
-        errorOverlay.setVisibility(View.VISIBLE);
         errorOverlayShown = true;
         errorOverlay.postDelayed(errorHideRunnable, 2000);
     }
@@ -880,10 +866,7 @@ public class MainActivity extends Activity {
     private void showStatus(int textResId, int iconResId) {
         if (statusTextView == null) return;
         cancelTransientError();
-        statusTextView.setText(textResId);
-        statusTextView.setCompoundDrawablesWithIntrinsicBounds(0, 0, iconResId, 0);
-        StatusCenter.place(statusTextView, rootLayout != null ? rootLayout.getHeight() : 0, statusObstructionPx());
-        statusTextView.setVisibility(View.VISIBLE);
+        StatusCenter.show(statusTextView, rootLayout, statusObstructionPx(), textResId, iconResId);
         hideListViewPreservingScroll();
     }
 
@@ -929,103 +912,7 @@ public class MainActivity extends Activity {
     }
 
     private void fetchSpecificApp(final String pkgName) {
-        new Thread(new Runnable() {
-            public void run() {
-                try {
-                    String urlStr = "http://odd.txy-50b.workers.dev/?pkg=" + pkgName;
-                    String jsonStr = Utils.downloadString(urlStr);
-                    JSONObject response = new JSONObject(jsonStr);
-                    org.json.JSONArray items = response.optJSONArray("items");
-
-                    if (items != null && items.length() > 0) {
-                        JSONObject obj = items.getJSONObject(0);
-                        final AppItem item = new AppItem();
-                        item.pkg = obj.optString("pkg", "");
-                        item.name = obj.optString("name", getString(R.string.unknown));
-                        item.version = obj.optString("version", "");
-                        item.minAndroid = obj.optString("min_android", "");
-                        item.icon = obj.optString("icon", "");
-                        item.category = obj.optString("category", "");
-                        item.description = obj.optString("description", "");
-                        item.downloadUrl = obj.optString("download_url", "");
-
-                        item.screenshots = new ArrayList<String>();
-                        org.json.JSONArray screens = obj.optJSONArray("screenshots");
-                        if (screens != null) {
-                            for (int j = 0; j < screens.length(); j++) {
-                                item.screenshots.add(screens.optString(j));
-                            }
-                        }
-
-                        runOnUiThread(new Runnable() {
-                            public void run() {
-                                hideStatus();
-                                openDetailsActivity(item);
-                            }
-                        });
-                    } else {
-                        runOnUiThread(new Runnable() {
-                            public void run() {
-                                showTransientError(R.string.status_app_not_found, 0);
-                            }
-                        });
-                    }
-                } catch (Exception e) {
-                    runOnUiThread(new Runnable() {
-                        public void run() {
-                            showTransientError(R.string.status_couldnt_load, R.drawable.ic_network_error);
-                        }
-                    });
-                }
-            }
-        }).start();
-    }
-
-    private static final long CLIENT_UPDATE_CHECK_COOLDOWN_MS = 6L * 60 * 60 * 1000;
-
-    private void checkForClientUpdate() {
-        android.content.SharedPreferences prefs = getSharedPreferences("prefs", MODE_PRIVATE);
-        long lastCheck = prefs.getLong("last_client_update_check", 0);
-        if (System.currentTimeMillis() - lastCheck < CLIENT_UPDATE_CHECK_COOLDOWN_MS) {
-            return;
-        }
-        Utils.savePrefs(prefs.edit().putLong("last_client_update_check", System.currentTimeMillis()));
-        new Thread(new Runnable() {
-            public void run() {
-                try {
-                    String urlStr = "http://odd.txy-50b.workers.dev/?pkg=com.oddmarket";
-                    String jsonStr = Utils.downloadString(urlStr);
-                    JSONObject response = new JSONObject(jsonStr);
-                    org.json.JSONArray items = response.optJSONArray("items");
-                    if (items != null && items.length() > 0) {
-                        JSONObject obj = items.getJSONObject(0);
-                        final String siteVer = obj.optString("version", "");
-                        android.content.pm.PackageInfo pInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
-                        final String installedVer = pInfo.versionName;
-                        if (Utils.isVersionOlder(installedVer, siteVer)) {
-                            runOnUiThread(new Runnable() {
-                                public void run() {
-                                    if (isDestroyed || isFinishing()) return;
-                                    if (updateDialog != null && updateDialog.isShowing()) return;
-                                    AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
-                                    builder.setMessage(R.string.update_available_message);
-                                    builder.setPositiveButton(R.string.btn_update, new DialogInterface.OnClickListener() {
-                                        public void onClick(DialogInterface dialog, int which) {
-                                            fetchSpecificApp("com.oddmarket");
-                                        }
-                                    });
-                                    builder.setCancelable(true);
-                                    updateDialog = builder.create();
-                                    updateDialog.show();
-                                }
-                            });
-                        }
-                    }
-                } catch (Exception e) {
-                    FileLogger.w(Utils.TAG, "Failed to check for client update", e);
-                }
-            }
-        }).start();
+        DetailsActivity.openByPackage(this, pkgName);
     }
 
     private void openDetailsActivity(AppItem item) {
@@ -1127,7 +1014,25 @@ public class MainActivity extends Activity {
         return fixed;
     }
 
-    public static final ExecutorService imageExecutor = Executors.newFixedThreadPool(6);
+    public static final ExecutorService imageExecutor = Executors.newFixedThreadPool(5);
+
+    private static void runImage(final Runnable task) {
+        try {
+            imageExecutor.execute(new Runnable() {
+                public void run() {
+                    try {
+                        task.run();
+                    } catch (OutOfMemoryError oom) {
+                        fullCache.clear();
+                    } catch (Throwable t) {
+                        Log.d(Utils.TAG, "Image task failed", t);
+                    }
+                }
+            });
+        } catch (Throwable t) {
+            Log.d(Utils.TAG, "Image task rejected", t);
+        }
+    }
 
     private static Bitmap downloadBitmapWithRetry(String url, int maxDimensionPx) {
         for (int attempt = 1; attempt <= 2; attempt++) {
@@ -1135,7 +1040,7 @@ public class MainActivity extends Activity {
                 Bitmap bmp = Utils.downloadAndDecodeBitmap(url, maxDimensionPx);
                 if (bmp != null) return bmp;
             } catch (OutOfMemoryError oom) {
-                Log.d(Utils.TAG, "Out of memory decoding image (attempt " + attempt + "): " + url);
+                fullCache.clear();
             } catch (Exception e) {
                 Log.d(Utils.TAG, "Failed to load image (attempt " + attempt + "): " + url, e);
             }
@@ -1158,32 +1063,62 @@ public class MainActivity extends Activity {
 
         img.setTag(url);
 
-        if (iconCache.containsKey(url)) {
-            Bitmap cachedBmp = iconCache.get(url);
-            if (cachedBmp != null) {
-                img.setImageBitmap(cachedBmp);
-                return;
-            }
+        Bitmap cachedBmp = iconCache.get(url);
+        if (cachedBmp != null) {
+            img.setImageBitmap(cachedBmp);
+            return;
         }
 
         img.setImageResource(R.drawable.ic_pic);
 
+        if (recentlyFailed(url)) return;
+
+        synchronized (inFlight) {
+            ArrayList<ImageView> waiting = inFlight.get(url);
+            if (waiting != null) {
+                if (!waiting.contains(img)) waiting.add(img);
+                return;
+            }
+            waiting = new ArrayList<ImageView>(2);
+            waiting.add(img);
+            inFlight.put(url, waiting);
+        }
+
         final int maxDimensionPx = iconTargetPx(img);
 
-        imageExecutor.execute(new Runnable() {
+        runImage(new Runnable() {
             public void run() {
-                if (!url.equals(img.getTag())) return;
+                Bitmap bmp = null;
+                boolean wanted;
+                synchronized (inFlight) {
+                    ArrayList<ImageView> waiting = inFlight.get(url);
+                    wanted = waiting != null && anyWaiterWants(url, waiting);
+                    if (!wanted) inFlight.remove(url);
+                }
+                if (!wanted) return;
 
-                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
-
-                final Bitmap bmp = downloadBitmapWithRetry(url, maxDimensionPx);
-                if (bmp != null) {
-                    iconCache.put(url, bmp);
-                    img.post(new Runnable() {
-                        public void run() {
-                            if (url.equals(img.getTag())) img.setImageBitmap(bmp);
+                try {
+                    android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                    bmp = iconCache.get(url);
+                    if (bmp == null) bmp = downloadBitmapWithRetry(url, maxDimensionPx);
+                    if (bmp != null) iconCache.put(url, bmp);
+                    else markFailed(url);
+                } finally {
+                    ArrayList<ImageView> waiters;
+                    synchronized (inFlight) {
+                        waiters = inFlight.remove(url);
+                    }
+                    if (bmp != null && waiters != null) {
+                        final Bitmap result = bmp;
+                        for (int i = 0; i < waiters.size(); i++) {
+                            final ImageView target = waiters.get(i);
+                            target.post(new Runnable() {
+                                public void run() {
+                                    if (url.equals(target.getTag())) target.setImageBitmap(result);
+                                }
+                            });
                         }
-                    });
+                    }
                 }
             }
         });
@@ -1208,6 +1143,39 @@ public class MainActivity extends Activity {
         fullCache.clear();
     }
 
+    public static void trimMemory(boolean severe) {
+        fullCache.clear();
+        iconCache.trimTo(severe ? 0 : iconCacheLimit() / 3);
+    }
+
+    private static final HashMap<String, ArrayList<ImageView>> inFlight = new HashMap<String, ArrayList<ImageView>>();
+    private static final HashMap<String, Long> failedAt = new HashMap<String, Long>();
+    private static final long FAIL_BACKOFF_MS = 20000L;
+
+    private static boolean recentlyFailed(String url) {
+        synchronized (failedAt) {
+            Long t = failedAt.get(url);
+            if (t == null) return false;
+            if (android.os.SystemClock.uptimeMillis() - t.longValue() < FAIL_BACKOFF_MS) return true;
+            failedAt.remove(url);
+            return false;
+        }
+    }
+
+    private static void markFailed(String url) {
+        synchronized (failedAt) {
+            if (failedAt.size() > 256) failedAt.clear();
+            failedAt.put(url, Long.valueOf(android.os.SystemClock.uptimeMillis()));
+        }
+    }
+
+    private static boolean anyWaiterWants(String url, ArrayList<ImageView> waiters) {
+        for (int i = 0; i < waiters.size(); i++) {
+            if (url.equals(waiters.get(i).getTag())) return true;
+        }
+        return false;
+    }
+
     public static void loadSized(final String rawUrl, final ImageView img, final int maxDimPx,
                                  final java.util.concurrent.CountDownLatch latch) {
         if (rawUrl == null || rawUrl.length() == 0) {
@@ -1222,7 +1190,7 @@ public class MainActivity extends Activity {
             if (latch != null) latch.countDown();
             return;
         }
-        imageExecutor.execute(new Runnable() {
+        runImage(new Runnable() {
             public void run() {
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
                 final Bitmap bmp = downloadBitmapWithRetry(url, maxDimPx);
@@ -1253,7 +1221,7 @@ public class MainActivity extends Activity {
     public static void prefetchFull(final Context context, final String rawUrl) {
         if (rawUrl == null || rawUrl.length() == 0) return;
         if (cachedFull(context, rawUrl) != null) return;
-        imageExecutor.execute(new Runnable() {
+        runImage(new Runnable() {
             public void run() {
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
                 loadFullSync(context, rawUrl);
@@ -1292,7 +1260,7 @@ public class MainActivity extends Activity {
             img.setImageDrawable(null);
         }
         if (!allowFull) return;
-        imageExecutor.execute(new Runnable() {
+        runImage(new Runnable() {
             public void run() {
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
                 final Bitmap bmp = loadFullSync(ctx, rawUrl);
@@ -1317,7 +1285,7 @@ public class MainActivity extends Activity {
             applyFull(img, url, full, fadeMs);
             return;
         }
-        imageExecutor.execute(new Runnable() {
+        runImage(new Runnable() {
             public void run() {
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
                 final Bitmap bmp = loadFullSync(ctx, rawUrl);
@@ -1359,18 +1327,16 @@ public class MainActivity extends Activity {
 
         img.setTag(url);
 
-        if (iconCache.containsKey(url)) {
-            Bitmap cachedBmp = iconCache.get(url);
-            if (cachedBmp != null) {
-                img.setImageBitmap(cachedBmp);
-                return;
-            }
+        Bitmap cachedBanner = iconCache.get(url);
+        if (cachedBanner != null) {
+            img.setImageBitmap(cachedBanner);
+            return;
         }
 
         final DisplayMetrics dm = img.getContext().getResources().getDisplayMetrics();
         final int maxDimensionPx = Math.max(dm.widthPixels, dm.heightPixels);
 
-        imageExecutor.execute(new Runnable() {
+        runImage(new Runnable() {
             public void run() {
                 if (!url.equals(img.getTag())) return;
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
@@ -1952,7 +1918,7 @@ public class MainActivity extends Activity {
             }
         }
 
-        private static final float RATING_STAR_RELATIVE_SIZE = 20f / 14f;
+        private static final float RATING_STAR_RELATIVE_SIZE = 16f / 14f;
         private static final int RATING_STAR_COLOR = Theme.PROGRESS_COLOR;
 
         private void bindRating(TextView txtRating, String pkg) {
@@ -1976,7 +1942,7 @@ public class MainActivity extends Activity {
     }
 
     private static final int MENU_ID_REFRESH = 102;
-    private static final int MENU_ID_CHECK_UPDATES = 101;
+    private static final int MENU_ID_MANAGE_APPS = 101;
     private static final int MENU_ID_PREFERENCES = 106;
     private static final int MENU_ID_LOGIN = 110;
     private static final int MENU_ID_REGISTER = 111;
@@ -1986,7 +1952,7 @@ public class MainActivity extends Activity {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         menu.add(0, MENU_ID_REFRESH, 0, R.string.menu_refresh);
-        menu.add(0, MENU_ID_CHECK_UPDATES, 1, R.string.menu_check_updates);
+        menu.add(0, MENU_ID_MANAGE_APPS, 1, R.string.menu_manage_apps);
         menu.add(0, MENU_ID_PREFERENCES, 2, R.string.menu_preferences);
         menu.add(0, MENU_ID_LOGIN, 3, R.string.menu_login);
         menu.add(0, MENU_ID_REGISTER, 4, R.string.menu_register);
@@ -2019,8 +1985,8 @@ public class MainActivity extends Activity {
         if (item.getItemId() == MENU_ID_REFRESH) {
             reloadAll();
             return true;
-        } else if (item.getItemId() == MENU_ID_CHECK_UPDATES) {
-            fetchSpecificApp("com.oddmarket");
+        } else if (item.getItemId() == MENU_ID_MANAGE_APPS) {
+            startActivity(new Intent(this, ManageAppsActivity.class));
             return true;
         } else if (item.getItemId() == MENU_ID_PREFERENCES) {
             startActivity(new Intent(this, SettingsActivity.class));

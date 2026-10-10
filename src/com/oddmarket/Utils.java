@@ -496,9 +496,12 @@ public final class Utils {
         boundsOpts.inJustDecodeBounds = true;
         BitmapFactory.decodeByteArray(data, 0, data.length, boundsOpts);
 
+        if (boundsOpts.outWidth <= 0 || boundsOpts.outHeight <= 0) return null;
+
         int sampleSize = 1;
         int largestSide = Math.max(boundsOpts.outWidth, boundsOpts.outHeight);
-        while (largestSide / (sampleSize * 2) >= maxDimensionPx) {
+        int limit = Math.max(1, maxDimensionPx);
+        while (largestSide / (sampleSize * 2) >= limit) {
             sampleSize *= 2;
         }
 

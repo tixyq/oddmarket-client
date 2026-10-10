@@ -1,11 +1,13 @@
 package com.oddmarket;
 
+import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.os.SystemClock;
 import android.widget.RemoteViews;
 
 import org.json.JSONArray;
@@ -16,22 +18,69 @@ public class WidgetUpdateWorker {
     private static final int FLAG_IMMUTABLE_COMPAT = 0x02000000;
     private static final int WIDGET_ICON_MAX_PX = 160;
 
+    static final long NORMAL_INTERVAL_MS = 15L * 60 * 1000;
+
+    static final long ERROR_INTERVAL_MS = 2L * 60 * 1000;
+
+    private static final int STATE_NO_WIDGETS = -1;
+    private static final int STATE_OK = 0;
+    private static final int STATE_ERROR = 1;
+
     public static void updateAllWidgets(Context appContext) {
         FileLogger.init(appContext);
+        int state = STATE_ERROR;
         try {
-            updateWidgetData(appContext);
+            state = updateWidgetData(appContext);
         } catch (Exception e) {
 
             FileLogger.w(Utils.TAG, "WidgetUpdateWorker: unexpected failure", e);
         }
+
+        if (state == STATE_NO_WIDGETS) {
+            cancelSchedule(appContext);
+            return;
+        }
+        scheduleNext(appContext, state == STATE_ERROR);
+
+        UpdateChecker.checkAsync(appContext);
     }
 
-    private static void updateWidgetData(Context appContext) {
+    static PendingIntent tickIntent(Context c) {
+        Intent i = new Intent(c, LatestAppsWidgetProvider.class);
+        i.setAction(LatestAppsWidgetProvider.ACTION_TICK);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (android.os.Build.VERSION.SDK_INT >= 23) flags |= FLAG_IMMUTABLE_COMPAT;
+        return PendingIntent.getBroadcast(c, 0, i, flags);
+    }
+
+    static void scheduleNext(Context c, boolean error) {
+        try {
+            AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
+            if (am == null) return;
+            long delay = error ? ERROR_INTERVAL_MS : NORMAL_INTERVAL_MS;
+            am.set(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + delay, tickIntent(c));
+        } catch (Throwable t) {
+            FileLogger.w(Utils.TAG, "WidgetUpdateWorker: schedule failed", t);
+        }
+    }
+
+    static void cancelSchedule(Context c) {
+        try {
+            AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
+            if (am != null) am.cancel(tickIntent(c));
+        } catch (Throwable t) {
+            FileLogger.w(Utils.TAG, "WidgetUpdateWorker: cancel failed", t);
+        }
+    }
+
+    private static int updateWidgetData(Context appContext) {
         AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(appContext);
         ComponentName thisWidget = new ComponentName(appContext, LatestAppsWidgetProvider.class);
         int[] allWidgetIds = appWidgetManager.getAppWidgetIds(thisWidget);
 
-        if (allWidgetIds == null || allWidgetIds.length == 0) return;
+        if (allWidgetIds == null || allWidgetIds.length == 0) return STATE_NO_WIDGETS;
+
+        boolean error = false;
 
         RemoteViews views = new RemoteViews(appContext.getPackageName(), R.layout.widget_latest_apps);
         applyWidgetTheme(views);
@@ -57,16 +106,19 @@ public class WidgetUpdateWorker {
                     views.setViewVisibility(R.id.widget_app2_container, android.view.View.INVISIBLE);
                 }
             } else {
+                error = true;
                 showError(appContext, views);
             }
         } catch (Exception e) {
             FileLogger.w(Utils.TAG, "Failed to update latest apps widget", e);
+            error = true;
             showError(appContext, views);
         }
 
         for (int widgetId : allWidgetIds) {
             appWidgetManager.updateAppWidget(widgetId, views);
         }
+        return error ? STATE_ERROR : STATE_OK;
     }
 
     private static void applyWidgetTheme(RemoteViews views) {

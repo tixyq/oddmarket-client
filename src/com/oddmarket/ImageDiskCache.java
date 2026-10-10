@@ -20,6 +20,11 @@ public final class ImageDiskCache {
     private ImageDiskCache() {}
 
     private static final long MAX_BYTES = 8L * 1024 * 1024;
+    private static final long TRIM_TARGET = MAX_BYTES - MAX_BYTES / 4;
+    private static final long FRESH_MS = 6L * 60 * 60 * 1000;
+    private static final long STALE_TMP_MS = 10L * 60 * 1000;
+
+    private static long approxTotal = -1L;
 
     private static volatile File dir;
 
@@ -53,7 +58,23 @@ public final class ImageDiskCache {
         File img = new File(cacheDir, key + ".img");
         File meta = new File(cacheDir, key + ".meta");
 
-        boolean hasCached = img.exists() && img.length() > 0;
+        long cachedLen = img.length();
+        boolean hasCached = cachedLen > 0;
+
+        if (hasCached && meta.exists()
+                && System.currentTimeMillis() - meta.lastModified() < FRESH_MS) {
+            try {
+                byte[] fresh = readFile(img);
+                img.setLastModified(System.currentTimeMillis());
+                return new Fetched(fresh, false);
+            } catch (Exception unreadable) {
+                img.delete();
+                meta.delete();
+                hasCached = false;
+                cachedLen = 0L;
+            }
+        }
+
         String etag = null;
         String lastModified = null;
         if (hasCached && meta.exists()) {
@@ -78,20 +99,25 @@ public final class ImageDiskCache {
 
             if (hasCached && code == HttpURLConnection.HTTP_NOT_MODIFIED) {
 
-                touch(img, meta);
+                touch(img, meta, true);
                 return new Fetched(readFile(img), false);
             }
 
-            byte[] body = readStream(conn.getInputStream());
-            writeFile(cacheDir, img, body);
-            writeMeta(cacheDir, meta, conn.getHeaderField("ETag"), conn.getHeaderField("Last-Modified"));
-            trim(cacheDir);
+            byte[] body = readStream(conn.getInputStream(), conn.getContentLength());
+            try {
+                writeFile(cacheDir, img, body);
+                writeMeta(cacheDir, meta, conn.getHeaderField("ETag"), conn.getHeaderField("Last-Modified"));
+                account(cacheDir, body.length - cachedLen);
+            } catch (Exception writeFailure) {
+                img.delete();
+                meta.delete();
+            }
             return new Fetched(body, true);
 
         } catch (Exception networkFailure) {
             if (hasCached) {
 
-                touch(img, meta);
+                touch(img, meta, false);
                 return new Fetched(readFile(img), false);
             }
             throw networkFailure;
@@ -130,8 +156,12 @@ public final class ImageDiskCache {
     }
 
     private static byte[] readStream(InputStream in) throws Exception {
+        return readStream(in, -1);
+    }
+
+    private static byte[] readStream(InputStream in, int expected) throws Exception {
         try {
-            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream(expected > 0 && expected < 4 * 1024 * 1024 ? expected : 8192);
             byte[] chunk = new byte[8192];
             int read;
             while ((read = in.read(chunk)) != -1) {
@@ -148,14 +178,19 @@ public final class ImageDiskCache {
     }
 
     private static void writeFile(File cacheDir, File dest, byte[] data) throws Exception {
-        File tmp = new File(cacheDir, dest.getName() + ".tmp");
-        FileOutputStream out = new FileOutputStream(tmp);
+        File tmp = new File(cacheDir, dest.getName() + "." + Thread.currentThread().getId() + "." + System.nanoTime() + ".tmp");
+        boolean done = false;
         try {
-            out.write(data);
+            FileOutputStream out = new FileOutputStream(tmp);
+            try {
+                out.write(data);
+            } finally {
+                out.close();
+            }
+            done = tmp.renameTo(dest);
         } finally {
-            out.close();
+            if (!done) tmp.delete();
         }
-        tmp.renameTo(dest);
     }
 
     private static void writeMeta(File cacheDir, File meta, String etag, String lastModified) {
@@ -182,25 +217,39 @@ public final class ImageDiskCache {
         }
     }
 
-    private static void touch(File img, File meta) {
+    private static void touch(File img, File meta, boolean validated) {
         long now = System.currentTimeMillis();
         img.setLastModified(now);
-        if (meta.exists()) meta.setLastModified(now);
+        if (validated && meta.exists()) meta.setLastModified(now);
+    }
+
+    private static synchronized void account(File cacheDir, long delta) {
+        if (approxTotal < 0L) {
+            trim(cacheDir);
+            return;
+        }
+        approxTotal += delta;
+        if (approxTotal > MAX_BYTES) trim(cacheDir);
     }
 
     private static synchronized void trim(File cacheDir) {
         File[] files = cacheDir.listFiles();
         if (files == null) return;
 
+        long now = System.currentTimeMillis();
         long total = 0;
         List<File> imgs = new ArrayList<File>();
         for (int i = 0; i < files.length; i++) {
             File f = files[i];
-            if (f.getName().endsWith(".img")) {
+            String fileName = f.getName();
+            if (fileName.endsWith(".img")) {
                 imgs.add(f);
                 total += f.length();
+            } else if (fileName.endsWith(".tmp") && now - f.lastModified() > STALE_TMP_MS) {
+                f.delete();
             }
         }
+        approxTotal = total;
         if (total <= MAX_BYTES) return;
 
         Collections.sort(imgs, new Comparator<File>() {
@@ -210,7 +259,7 @@ public final class ImageDiskCache {
             }
         });
 
-        for (int i = 0; i < imgs.size() && total > MAX_BYTES; i++) {
+        for (int i = 0; i < imgs.size() && total > TRIM_TARGET; i++) {
             File f = imgs.get(i);
             total -= f.length();
             String name = f.getName();
@@ -218,5 +267,6 @@ public final class ImageDiskCache {
             f.delete();
             new File(cacheDir, key + ".meta").delete();
         }
+        approxTotal = total;
     }
 }

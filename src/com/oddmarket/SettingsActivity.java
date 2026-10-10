@@ -64,6 +64,7 @@ public class SettingsActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        SingleInstance.claim(this);
         FileLogger.init(this);
         FileLogger.i(Utils.TAG, "SettingsActivity.onCreate");
         GhostTitle.prepareWindow(this);
@@ -148,6 +149,13 @@ public class SettingsActivity extends Activity {
                 Utils.savePrefs(prefs.edit().putBoolean("anim_enabled", isChecked));
                 PerfGuard.markAnimUserSet(SettingsActivity.this);
                 if (ghostTitle != null) ghostTitle.refreshAnimEnabled();
+            }
+        });
+
+        findViewById(R.id.settings_btn_check_updates).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                checkForUpdates();
             }
         });
 
@@ -367,6 +375,7 @@ public class SettingsActivity extends Activity {
         Utils.setTextColorById(this, R.id.settings_legacy_dl_label, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_blur_label, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_anim_label, Theme.textPrimary());
+        Utils.setTextColorById(this, R.id.settings_btn_check_updates, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_btn_send_log, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_btn_request_root, Theme.textPrimary());
 
@@ -396,6 +405,10 @@ public class SettingsActivity extends Activity {
         Utils.setTextColorById(this, R.id.settings_admin_label_text, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.link_telegram, Theme.linkColor());
         Utils.setTextColorById(this, R.id.link_owner, Theme.linkColor());
+    }
+
+    private void checkForUpdates() {
+        DetailsActivity.openByPackage(this, "com.oddmarket");
     }
 
     private void sendLogFile() {
@@ -500,5 +513,11 @@ public class SettingsActivity extends Activity {
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    @Override
+    protected void onDestroy() {
+        SingleInstance.release(this);
+        super.onDestroy();
     }
 }

@@ -24,9 +24,9 @@
     <string name="rating_format">Оценка %1$s</string>
 
     <string name="menu_refresh">Обновить список</string>
+    <string name="menu_manage_apps">Управление приложениями</string>
     <string name="menu_check_updates">Проверить обновления</string>
     <string name="menu_preferences">Настройки</string>
-    <string name="update_available_message">Доступно обновление, пожалуйста, обновите клиент.</string>
     <string name="btn_update">Обновить</string>
     <string name="menu_login">Войти</string>
     <string name="menu_register">Регистрация</string>
@@ -149,4 +149,25 @@
     <string name="category_travel_wrap">Путеше-\nствия</string>
     <string name="category_casual_wrap">Казуаль-\nные</string>
     <string name="category_brain_puzzle_wrap">Голово-\nломки</string>
+
+    <string name="manage_selected">Выбрано (%d)</string>
+    <string name="manage_menu_clear">Убрать выделение</string>
+    <string name="manage_menu_invert">Инвертировать выделение</string>
+    <string name="manage_update_available">Доступно обновление %1$s</string>
+    <string name="manage_yes">Да</string>
+    <string name="manage_no">Нет</string>
+    <string name="toast_operation_declined">Операция отклонена</string>
+    <plurals name="manage_delete_confirm">
+        <item quantity="one">Вы уверены, что хотите удалить %d приложение?</item>
+        <item quantity="few">Вы уверены, что хотите удалить %d приложения?</item>
+        <item quantity="many">Вы уверены, что хотите удалить %d приложений?</item>
+        <item quantity="other">Вы уверены, что хотите удалить %d приложения?</item>
+    </plurals>
+    <string name="notif_channel_updates">Обновления</string>
+    <plurals name="notif_updates_available">
+        <item quantity="one">Доступно %d обновление</item>
+        <item quantity="few">Доступно %d обновления</item>
+        <item quantity="many">Доступно %d обновлений</item>
+        <item quantity="other">Доступно %d обновления</item>
+    </plurals>
 </resources>
