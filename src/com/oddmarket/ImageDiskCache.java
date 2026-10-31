@@ -126,6 +126,84 @@ public final class ImageDiskCache {
         }
     }
 
+    /**
+     * Same cache/revalidation logic as {@link #fetch}, but never loads the image into the Java heap:
+     * the body is streamed straight to disk and the cached File is returned. Returns null when the
+     * disk cache is not initialised (caller falls back to {@link #fetch}).
+     */
+    public static File fetchFile(String url, int timeoutMillis) throws Exception {
+        File cacheDir = dir;
+        if (cacheDir == null) return null;
+
+        String key = keyFor(url);
+        File img = new File(cacheDir, key + ".img");
+        File meta = new File(cacheDir, key + ".meta");
+
+        long cachedLen = img.length();
+        boolean hasCached = cachedLen > 0;
+
+        if (hasCached && meta.exists()
+                && System.currentTimeMillis() - meta.lastModified() < FRESH_MS) {
+            img.setLastModified(System.currentTimeMillis());
+            return img;
+        }
+
+        String etag = null;
+        String lastModified = null;
+        if (hasCached && meta.exists()) {
+            String[] kv = readMeta(meta);
+            etag = kv[0];
+            lastModified = kv[1];
+        }
+
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setConnectTimeout(timeoutMillis);
+            conn.setReadTimeout(timeoutMillis);
+            if (hasCached && etag != null) conn.setRequestProperty("If-None-Match", etag);
+            if (hasCached && lastModified != null) conn.setRequestProperty("If-Modified-Since", lastModified);
+
+            int code = conn.getResponseCode();
+            if (hasCached && code == HttpURLConnection.HTTP_NOT_MODIFIED) {
+                touch(img, meta, true);
+                return img;
+            }
+
+            File tmp = new File(cacheDir, img.getName() + "." + Thread.currentThread().getId()
+                    + "." + System.nanoTime() + ".tmp");
+            boolean done = false;
+            try {
+                InputStream in = conn.getInputStream();
+                FileOutputStream out = new FileOutputStream(tmp);
+                try {
+                    byte[] chunk = new byte[8192];
+                    int read;
+                    while ((read = in.read(chunk)) != -1) out.write(chunk, 0, read);
+                } finally {
+                    try { out.close(); } catch (Exception ignored) {}
+                    try { in.close(); } catch (Exception ignored) {}
+                }
+                done = tmp.renameTo(img);
+            } finally {
+                if (!done) tmp.delete();
+            }
+            if (!done) throw new java.io.IOException("cache rename failed");
+            writeMeta(cacheDir, meta, conn.getHeaderField("ETag"), conn.getHeaderField("Last-Modified"));
+            account(cacheDir, img.length() - cachedLen);
+            return img;
+
+        } catch (Exception networkFailure) {
+            if (hasCached && img.length() > 0) {
+                touch(img, meta, false);
+                return img;
+            }
+            throw networkFailure;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
     private static byte[] plainDownload(String url, int timeoutMillis) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setConnectTimeout(timeoutMillis);
@@ -161,7 +239,7 @@ public final class ImageDiskCache {
 
     private static byte[] readStream(InputStream in, int expected) throws Exception {
         try {
-            ByteArrayOutputStream buffer = new ByteArrayOutputStream(expected > 0 && expected < 4 * 1024 * 1024 ? expected : 8192);
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream(expected > 0 && expected < 4 * 1024 * 1024 ? expected + 1 : 8192);
             byte[] chunk = new byte[8192];
             int read;
             while ((read = in.read(chunk)) != -1) {

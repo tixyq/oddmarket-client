@@ -18,16 +18,10 @@ public class ApkProvider extends ContentProvider {
         return true;
     }
 
-    private static final String LOG_SEGMENT = "log";
-
     private File resolveSafeFile(Uri uri) {
         String segment = uri.getLastPathSegment();
         if (segment == null) {
             return null;
-        }
-
-        if (LOG_SEGMENT.equals(segment)) {
-            return FileLogger.getLogFile();
         }
 
         if (segment.contains("..") || segment.contains(File.separator) || segment.contains("/")) {
@@ -103,10 +97,6 @@ public class ApkProvider extends ContentProvider {
 
     @Override
     public String getType(Uri uri) {
-        String segment = uri.getLastPathSegment();
-        if (LOG_SEGMENT.equals(segment)) {
-            return "text/plain";
-        }
         return "application/vnd.android.package-archive";
     }
 

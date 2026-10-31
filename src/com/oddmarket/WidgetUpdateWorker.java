@@ -27,13 +27,11 @@ public class WidgetUpdateWorker {
     private static final int STATE_ERROR = 1;
 
     public static void updateAllWidgets(Context appContext) {
-        FileLogger.init(appContext);
         int state = STATE_ERROR;
         try {
             state = updateWidgetData(appContext);
         } catch (Exception e) {
 
-            FileLogger.w(Utils.TAG, "WidgetUpdateWorker: unexpected failure", e);
         }
 
         if (state == STATE_NO_WIDGETS) {
@@ -60,7 +58,6 @@ public class WidgetUpdateWorker {
             long delay = error ? ERROR_INTERVAL_MS : NORMAL_INTERVAL_MS;
             am.set(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + delay, tickIntent(c));
         } catch (Throwable t) {
-            FileLogger.w(Utils.TAG, "WidgetUpdateWorker: schedule failed", t);
         }
     }
 
@@ -69,7 +66,6 @@ public class WidgetUpdateWorker {
             AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
             if (am != null) am.cancel(tickIntent(c));
         } catch (Throwable t) {
-            FileLogger.w(Utils.TAG, "WidgetUpdateWorker: cancel failed", t);
         }
     }
 
@@ -110,7 +106,6 @@ public class WidgetUpdateWorker {
                 showError(appContext, views);
             }
         } catch (Exception e) {
-            FileLogger.w(Utils.TAG, "Failed to update latest apps widget", e);
             error = true;
             showError(appContext, views);
         }

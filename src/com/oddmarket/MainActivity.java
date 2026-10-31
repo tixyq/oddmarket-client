@@ -33,7 +33,6 @@ import android.widget.Toast;
 import android.widget.ScrollView;
 import android.widget.LinearLayout;
 import android.widget.FrameLayout;
-import android.util.Log;
 import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -219,10 +218,11 @@ public class MainActivity extends Activity {
         long time;
     }
 
-    private final LinkedHashMap<String, CachedPage> pageCache =
+    // Static: survives activity re-creation (rotation) so the list does not reload. UI thread only.
+    private static final LinkedHashMap<String, CachedPage> pageCache =
             new LinkedHashMap<String, CachedPage>(16, 0.75f, true) {
                 protected boolean removeEldestEntry(Map.Entry<String, CachedPage> eldest) {
-                    return size() > 24;
+                    return size() > 10;
                 }
             };
 
@@ -230,8 +230,6 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        FileLogger.init(this);
-        FileLogger.i(Utils.TAG, "MainActivity.onCreate start, intent=" + getIntent());
 
         GhostTitle.prepareWindow(this);
 
@@ -239,6 +237,13 @@ public class MainActivity extends Activity {
         setTitle(R.string.app_name);
 
         initPreferences();
+        if (savedInstanceState != null) {
+            String t = savedInstanceState.getString("tab");
+            if (t != null) currentTab = t;
+            currentPage = Math.max(1, savedInstanceState.getInt("page", 1));
+            String q = savedInstanceState.getString("query");
+            if (q != null) currentSearchQuery = q;
+        }
         detectTablet();
         buildRootLayout();
         bindViews();
@@ -246,6 +251,7 @@ public class MainActivity extends Activity {
         wireBannerClick();
         wireListAdapter();
         wireSearchBox();
+        if (currentSearchQuery.length() > 0) searchBox.setText(currentSearchQuery);
         wireTabButtons();
         wireFocusOrder();
 
@@ -265,7 +271,6 @@ public class MainActivity extends Activity {
                 listView.requestFocus();
             }
         });
-        FileLogger.i(Utils.TAG, "MainActivity.onCreate done");
     }
 
     @Override
@@ -347,7 +352,6 @@ public class MainActivity extends Activity {
             java.lang.reflect.Method m = android.view.View.class.getMethod("setScrollbarFadingEnabled", boolean.class);
             m.invoke(scrollView, false);
         } catch (Exception e) {
-            Log.d(Utils.TAG, "setScrollbarFadingEnabled not available", e);
         }
 
         scrollView.setVerticalScrollBarEnabled(true);
@@ -521,7 +525,6 @@ public class MainActivity extends Activity {
                                 startActivity(intent);
                             }
                         } catch (Exception e) {
-                            FileLogger.w(Utils.TAG, "Failed to open banner link: " + link, e);
                         }
                     }
                 }
@@ -639,7 +642,6 @@ public class MainActivity extends Activity {
         super.onResume();
         if (downloadUi == null) downloadUi = new DownloadUi(this, ghostTitle, null);
         downloadUi.start();
-        FileLogger.i(Utils.TAG, "MainActivity.onResume");
         UpdateChecker.checkNowAsync(this);
 
         boolean currentRussianDomainState = isRussianDomainActive(this);
@@ -752,7 +754,6 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
-        FileLogger.i(Utils.TAG, "MainActivity.onPause");
         searchHandler.removeCallbacks(searchRunnable);
         bannerHandler.removeCallbacks(bannerRunnable);
         if (downloadUi != null) downloadUi.stop();
@@ -760,8 +761,15 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putString("tab", currentTab);
+        outState.putInt("page", currentPage);
+        outState.putString("query", currentSearchQuery);
+    }
+
+    @Override
     protected void onDestroy() {
-        FileLogger.i(Utils.TAG, "MainActivity.onDestroy");
         isDestroyed = true;
         searchHandler.removeCallbacks(searchRunnable);
         bannerHandler.removeCallbacks(bannerRunnable);
@@ -974,7 +982,6 @@ public class MainActivity extends Activity {
                 listView.setLayoutParams(params);
             }
         } catch (Exception e) {
-            FileLogger.w(Utils.TAG, "Failed to measure list view height", e);
         } finally {
             adapter.measureOnly = false;
         }
@@ -1014,7 +1021,14 @@ public class MainActivity extends Activity {
         return fixed;
     }
 
-    public static final ExecutorService imageExecutor = Executors.newFixedThreadPool(5);
+    public static final ExecutorService imageExecutor = Executors.newFixedThreadPool(imageThreads());
+
+    private static int imageThreads() {
+        long max = Runtime.getRuntime().maxMemory();
+        if (max <= 24L * 1024 * 1024) return 2;
+        if (max <= 48L * 1024 * 1024) return 3;
+        return 4;
+    }
 
     private static void runImage(final Runnable task) {
         try {
@@ -1023,26 +1037,32 @@ public class MainActivity extends Activity {
                     try {
                         task.run();
                     } catch (OutOfMemoryError oom) {
-                        fullCache.clear();
+                        onImageOom();
                     } catch (Throwable t) {
-                        Log.d(Utils.TAG, "Image task failed", t);
                     }
                 }
             });
         } catch (Throwable t) {
-            Log.d(Utils.TAG, "Image task rejected", t);
         }
     }
 
+    private static void onImageOom() {
+        fullCache.clear();
+        iconCache.trimTo(iconCacheLimit() / 3);
+    }
+
     private static Bitmap downloadBitmapWithRetry(String url, int maxDimensionPx) {
+        return downloadBitmapWithRetry(url, maxDimensionPx, false);
+    }
+
+    private static Bitmap downloadBitmapWithRetry(String url, int maxDimensionPx, boolean opaque) {
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
-                Bitmap bmp = Utils.downloadAndDecodeBitmap(url, maxDimensionPx);
+                Bitmap bmp = Utils.downloadAndDecodeBitmap(url, maxDimensionPx, opaque);
                 if (bmp != null) return bmp;
             } catch (OutOfMemoryError oom) {
-                fullCache.clear();
+                onImageOom();
             } catch (Exception e) {
-                Log.d(Utils.TAG, "Failed to load image (attempt " + attempt + "): " + url, e);
             }
             if (attempt == 1) {
                 try {
@@ -1144,8 +1164,17 @@ public class MainActivity extends Activity {
     }
 
     public static void trimMemory(boolean severe) {
+        if (severe) pageCache.clear();
         fullCache.clear();
         iconCache.trimTo(severe ? 0 : iconCacheLimit() / 3);
+    }
+
+    public static void trimMemoryLevel(int level) {
+        if (level >= 60) trimMemory(true);
+        else if (level >= 40) trimMemory(false);
+        else if (level >= 20) fullCache.clear();
+        else if (level >= 15) trimMemory(false);
+        else if (level >= 10) fullCache.clear();
     }
 
     private static final HashMap<String, ArrayList<ImageView>> inFlight = new HashMap<String, ArrayList<ImageView>>();
@@ -1193,7 +1222,7 @@ public class MainActivity extends Activity {
         runImage(new Runnable() {
             public void run() {
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
-                final Bitmap bmp = downloadBitmapWithRetry(url, maxDimPx);
+                final Bitmap bmp = downloadBitmapWithRetry(url, maxDimPx, true);
                 if (bmp != null) iconCache.put(url, bmp);
                 img.post(new Runnable() {
                     public void run() {
@@ -1235,7 +1264,7 @@ public class MainActivity extends Activity {
         Bitmap b = fullCache.get(url);
         if (b != null) return b;
         DisplayMetrics dm = context.getResources().getDisplayMetrics();
-        b = downloadBitmapWithRetry(url, Math.max(dm.widthPixels, dm.heightPixels));
+        b = downloadBitmapWithRetry(url, Math.max(dm.widthPixels, dm.heightPixels), true);
         if (b != null) fullCache.put(url, b);
         return b;
     }
@@ -1341,7 +1370,7 @@ public class MainActivity extends Activity {
                 if (!url.equals(img.getTag())) return;
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
 
-                final Bitmap bmp = downloadBitmapWithRetry(url, maxDimensionPx);
+                final Bitmap bmp = downloadBitmapWithRetry(url, maxDimensionPx, true);
                 if (bmp != null) {
                     iconCache.put(url, bmp);
                     img.post(new Runnable() {
@@ -1361,15 +1390,13 @@ public class MainActivity extends Activity {
     }
 
     private void loadBanners() {
-        FileLogger.i(Utils.TAG, "loadBanners: start");
-        new Thread(new Runnable() {
+        Utils.runBackground(new Runnable() {
             public void run() {
                 try {
                     String bannerListUrl = applyRussianDomain(MainActivity.this, "http://odd-m.w0.am/banner.json");
                     String jsonStr = Utils.downloadString(bannerListUrl);
                     JSONObject jsonObj = new JSONObject(jsonStr);
                     final org.json.JSONArray array = jsonObj.optJSONArray("banners");
-                    FileLogger.i(Utils.TAG, "loadBanners: got " + (array != null ? array.length() : 0) + " banner(s)");
                     if (array != null && array.length() > 0) {
                         runOnUiThread(new Runnable() {
                             public void run() {
@@ -1401,10 +1428,9 @@ public class MainActivity extends Activity {
                         });
                     }
                 } catch (Exception e) {
-                    FileLogger.w(Utils.TAG, "Failed to load banners", e);
                 }
             }
-        }).start();
+        });
     }
 
     private void switchBanner() {
@@ -1484,18 +1510,16 @@ public class MainActivity extends Activity {
             });
         }
 
-        new Thread(new Runnable() {
+        Utils.runBackground(new Runnable() {
             public void run() {
                 try {
                     String urlStr = buildListUrl(pageSnapshot, tabSnapshot, querySnapshot);
-                    FileLogger.i(Utils.TAG, "loadData: fetching " + urlStr);
                     String jsonStr = Utils.downloadString(urlStr);
                     JSONObject response = new JSONObject(jsonStr);
 
                     final boolean moreFlag = response.optBoolean("hasMore", false);
                     final boolean prevFlag = response.optBoolean("hasPrev", false);
                     final List<AppItem> resultList = parseAppItems(response);
-                    FileLogger.i(Utils.TAG, "loadData: got " + resultList.size() + " item(s), page=" + pageSnapshot + " tab=" + tabSnapshot);
 
                     final CachedPage cp = new CachedPage();
                     cp.items = new ArrayList<AppItem>(resultList);
@@ -1509,7 +1533,6 @@ public class MainActivity extends Activity {
                         }
                     });
                 } catch (final Exception e) {
-                    FileLogger.w(Utils.TAG, "loadData: failed for page=" + pageSnapshot + " tab=" + tabSnapshot, e);
                     runOnUiThread(new Runnable() {
                         public void run() {
                             applyLoadError(myRequest);
@@ -1517,7 +1540,7 @@ public class MainActivity extends Activity {
                     });
                 }
             }
-        }).start();
+        });
     }
 
     private String buildListUrl(int page, String tab, String query) throws Exception {
@@ -1618,7 +1641,6 @@ public class MainActivity extends Activity {
                                 try {
                                     searchBox.setSelection(selStart, selEnd);
                                 } catch (Exception e) {
-                                    Log.d(Utils.TAG, "Failed to restore search box selection", e);
                                 }
                             }
                         }
@@ -1929,7 +1951,7 @@ public class MainActivity extends Activity {
                 return;
             }
 
-            String ratingNumber = String.format(java.util.Locale.US, "%.1f", rating);
+            String ratingNumber = Utils.formatOneDecimal(rating.doubleValue());
             String display = ratingNumber + " *";
             SpannableString spannable = new SpannableString(display);
             int starStart = ratingNumber.length() + 1;

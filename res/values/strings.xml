@@ -60,7 +60,6 @@
     <string name="toast_permission_denied_download">Permission denied. Cannot download APK.</string>
     <string name="toast_install_failed_not_found">Installation failed: APK not found.</string>
     <string name="toast_autoinstall_blocked">Auto-install blocked. APK saved in Download folder.</string>
-    <string name="toast_download_error_format">Download error: %1$s</string>
 
     <string name="desc_search_clear">Clear search</string>
     <string name="desc_page_prev">Previous page</string>
@@ -74,10 +73,7 @@
     <string name="settings_legacy_download_label">Legacy Download</string>
     <string name="settings_blur_label">Enable Blur</string>
     <string name="settings_anim_label">Enable Animations</string>
-    <string name="settings_send_log_label">Send log</string>
     <string name="settings_request_root_label">Request root access</string>
-    <string name="toast_no_log_file">No log file yet</string>
-    <string name="toast_no_email_app_found">No app found to send the log</string>
     <string name="settings_disclaimer">Oddmarket is a retro app and game store for old Android devices. All content is provided for informational purposes only. The administration is not responsible for third-party software.</string>
     <string name="settings_telegram_label">"Telegram community – "</string>
     <string name="settings_telegram_link">t.me/daom38</string>
@@ -128,7 +124,6 @@
     <string name="notif_waiting">Waiting to download</string>
     <string name="notif_download_error_format">Download failed: %1$s</string>
     <string name="perf_blur_off">Blur was turned off automatically to keep things smooth. You can turn it back on in Settings.</string>
-    <string name="perf_anim_off">Animations were turned off automatically to keep things smooth. You can turn them back on in Settings.</string>
 
     <string name="size_b_unit">B</string>
     <string name="size_kb_unit">KB</string>

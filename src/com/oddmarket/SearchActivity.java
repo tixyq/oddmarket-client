@@ -93,7 +93,6 @@ public class SearchActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         SingleInstance.claim(this);
-        FileLogger.init(this);
         GhostTitle.prepareWindow(this);
         paintWindow();
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
@@ -533,7 +532,7 @@ public class SearchActivity extends Activity {
             showStatus(R.string.status_loading, 0);
         }
 
-        new Thread(new Runnable() {
+        Utils.runBackground(new Runnable() {
             public void run() {
                 try {
                     String json = Utils.downloadString(buildUrl(pg, q));
@@ -547,7 +546,6 @@ public class SearchActivity extends Activity {
                         }
                     });
                 } catch (final Exception e) {
-                    FileLogger.w(Utils.TAG, "SearchActivity: load failed", e);
                     runOnUiThread(new Runnable() {
                         public void run() {
                             applyError(my);
@@ -555,7 +553,7 @@ public class SearchActivity extends Activity {
                     });
                 }
             }
-        }).start();
+        });
     }
 
     private List<AppItem> parseItems(JSONObject response) throws Exception {
@@ -853,7 +851,7 @@ public class SearchActivity extends Activity {
                 txtRating.setVisibility(View.GONE);
                 return;
             }
-            String number = String.format(java.util.Locale.US, "%.1f", rating);
+            String number = Utils.formatOneDecimal(rating.doubleValue());
             String display = number + " *";
             SpannableString spannable = new SpannableString(display);
             spannable.setSpan(new FilledStarSpan(RATING_STAR_RELATIVE_SIZE, RATING_STAR_COLOR),

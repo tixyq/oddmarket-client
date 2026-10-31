@@ -37,13 +37,11 @@ final class UpdateChecker {
 
     private static void start(Context c, final boolean force) {
         final Context app = c.getApplicationContext();
-        Thread t = new Thread(new Runnable() {
+        Utils.runBackground(new Runnable() {
             public void run() {
                 check(app, force);
             }
-        }, "update-check");
-        t.setDaemon(true);
-        t.start();
+        });
     }
 
     static void check(Context c) {
@@ -74,7 +72,6 @@ final class UpdateChecker {
         long now = SystemClock.elapsedRealtime();
         if (!force && lastOkElapsed != 0L && now - lastOkElapsed < COOLDOWN_MS) return;
         try {
-            FileLogger.init(app);
             InstalledCatalog.Snapshot snap = InstalledCatalog.sync(app);
             if (snap.failed > 0) {
 
@@ -89,7 +86,6 @@ final class UpdateChecker {
             report(app, names);
             lastOkElapsed = now;
         } catch (Throwable t) {
-            FileLogger.w(Utils.TAG, "UpdateChecker: check failed", t);
         }
     }
 

@@ -16,8 +16,16 @@ public class FilledStarSpan extends ReplacementSpan {
         this.fillColor = fillColor;
     }
 
+    // Reused scratch paint: spans are measured/drawn on the UI thread only, so no per-call allocation.
+    private Paint work;
+
     private Paint scaled(Paint src) {
-        Paint p = new Paint(src);
+        Paint p = work;
+        if (p == null) {
+            p = new Paint();
+            work = p;
+        }
+        p.set(src);
         p.setTextSize(src.getTextSize() * relativeSize);
         return p;
     }

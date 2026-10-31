@@ -65,8 +65,6 @@ public class SettingsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         SingleInstance.claim(this);
-        FileLogger.init(this);
-        FileLogger.i(Utils.TAG, "SettingsActivity.onCreate");
         GhostTitle.prepareWindow(this);
         setTitle(R.string.title_preferences);
         setContentView(R.layout.settings);
@@ -103,7 +101,6 @@ public class SettingsActivity extends Activity {
             PackageInfo pInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
             versionName = pInfo.versionName + " (" + pInfo.versionCode + ")";
         } catch (Exception e) {
-            FileLogger.w(Utils.TAG, "Could not read own package version", e);
         }
         versionText.setText(versionName);
 
@@ -156,14 +153,6 @@ public class SettingsActivity extends Activity {
             @Override
             public void onClick(View v) {
                 checkForUpdates();
-            }
-        });
-
-        TextView btnSendLog = (TextView) findViewById(R.id.settings_btn_send_log);
-        btnSendLog.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                sendLogFile();
             }
         });
 
@@ -376,7 +365,6 @@ public class SettingsActivity extends Activity {
         Utils.setTextColorById(this, R.id.settings_blur_label, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_anim_label, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_btn_check_updates, Theme.textPrimary());
-        Utils.setTextColorById(this, R.id.settings_btn_send_log, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_btn_request_root, Theme.textPrimary());
 
         View iconSelectorScroll = findViewById(R.id.icon_selector_scroll);
@@ -411,17 +399,6 @@ public class SettingsActivity extends Activity {
         DetailsActivity.openByPackage(this, "com.oddmarket");
     }
 
-    private void sendLogFile() {
-        File logFile = FileLogger.getLogFile();
-        if (logFile == null || !logFile.exists() || logFile.length() == 0) {
-            Toast.makeText(this, R.string.toast_no_log_file, Toast.LENGTH_SHORT).show();
-            return;
-        }
-        if (!Utils.shareLogFile(this)) {
-            Toast.makeText(this, R.string.toast_no_email_app_found, Toast.LENGTH_SHORT).show();
-        }
-    }
-
     private void setupRootRequestButton() {
         final TextView btnRequestRoot = (TextView) findViewById(R.id.settings_btn_request_root);
         if (btnRequestRoot == null) return;
@@ -437,7 +414,7 @@ public class SettingsActivity extends Activity {
             @Override
             public void onClick(View v) {
                 btnRequestRoot.setEnabled(false);
-                new Thread(new Runnable() {
+                Utils.runBackground(new Runnable() {
                     @Override
                     public void run() {
                         final boolean granted = Utils.requestRootAccessAndPersist(SettingsActivity.this);
@@ -455,7 +432,7 @@ public class SettingsActivity extends Activity {
                             }
                         });
                     }
-                }, "OddMarket-RootRequest").start();
+                });
             }
         });
     }
@@ -496,7 +473,6 @@ public class SettingsActivity extends Activity {
                 intent.putExtra("pkg", getPackageName());
                 startActivity(intent);
             } catch (Exception ex) {
-                FileLogger.w(Utils.TAG, "No settings activity available for this device", ex);
             }
         }
     }

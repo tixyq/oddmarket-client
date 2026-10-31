@@ -42,8 +42,6 @@ public class WebActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         SingleInstance.claim(this);
-        FileLogger.init(this);
-        FileLogger.i(Utils.TAG, "WebActivity.onCreate url=" + getIntent().getStringExtra("url"));
         GhostTitle.prepareWindow(this);
 
         LinearLayout rootLayout = new LinearLayout(this);
@@ -80,7 +78,6 @@ public class WebActivity extends Activity {
         try {
             webView.addJavascriptInterface(bareUrlCheckBridge, BARE_URL_CHECK_BRIDGE_NAME);
         } catch (Exception e) {
-            FileLogger.w(Utils.TAG, "WebActivity: could not register bare-url bridge", e);
         }
 
         webView.setWebChromeClient(new WebChromeClient() {
@@ -166,7 +163,6 @@ public class WebActivity extends Activity {
 
             @Override
             public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-                FileLogger.w(Utils.TAG, "WebActivity: onReceivedError " + errorCode + " " + description + " url=" + failingUrl);
                 Toast.makeText(WebActivity.this, description, Toast.LENGTH_SHORT).show();
             }
 
@@ -218,7 +214,6 @@ public class WebActivity extends Activity {
     }
 
     private void finishAfterLogin() {
-        FileLogger.i(Utils.TAG, "WebActivity: login flow completed, closing");
         if (!isFinishing()) {
             finish();
         }

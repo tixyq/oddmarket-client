@@ -30,17 +30,17 @@ public class LatestAppsWidgetProvider extends AppWidgetProvider {
     }
 
     private void refresh(final Context context) {
-        FileLogger.init(context);
 
-        final android.content.BroadcastReceiver.PendingResult pendingResult = goAsync();
-        new Thread(new Runnable() {
+        final android.content.BroadcastReceiver.PendingResult pendingResult =
+                android.os.Build.VERSION.SDK_INT >= 11 ? goAsync() : null;
+        Utils.runBackground(new Runnable() {
             public void run() {
                 try {
                     WidgetUpdateWorker.updateAllWidgets(context.getApplicationContext());
                 } finally {
-                    pendingResult.finish();
+                    if (pendingResult != null) pendingResult.finish();
                 }
             }
-        }).start();
+        });
     }
 }

@@ -44,12 +44,53 @@ public final class Utils {
         }
     }
 
+    private static final java.util.concurrent.ThreadPoolExecutor BG =
+            new java.util.concurrent.ThreadPoolExecutor(3, 3, 20L, java.util.concurrent.TimeUnit.SECONDS,
+                    new java.util.concurrent.LinkedBlockingQueue<Runnable>(),
+                    new java.util.concurrent.ThreadFactory() {
+                        public Thread newThread(Runnable r) {
+                            Thread t = new Thread(r, "OddMarket-bg");
+                            t.setDaemon(true);
+                            return t;
+                        }
+                    });
+
+    static {
+        if (android.os.Build.VERSION.SDK_INT >= 9) {
+            BG.allowCoreThreadTimeOut(true);
+        }
+    }
+
+    /** Shared bounded pool for short background work (replaces ad-hoc threads: less stack memory, no thread bursts). */
+    public static void runBackground(final Runnable task) {
+        try {
+            BG.execute(new Runnable() {
+                public void run() {
+                    try {
+                        task.run();
+                    } catch (Throwable ignored) {
+                    }
+                }
+            });
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** "%.1f" in Locale.US without String.format (which is slow and allocation-heavy on old Dalvik). */
+    public static String formatOneDecimal(double value) {
+        long tenths = Math.round(value * 10d);
+        long abs = tenths < 0 ? -tenths : tenths;
+        StringBuilder sb = new StringBuilder(8);
+        if (tenths < 0) sb.append('-');
+        sb.append(abs / 10).append('.').append(abs % 10);
+        return sb.toString();
+    }
+
     public static void limitDnsCacheTtl() {
         try {
             java.security.Security.setProperty("networkaddress.cache.ttl", "60");
         } catch (Exception e) {
 
-            FileLogger.w(TAG, "Could not set networkaddress.cache.ttl", e);
         }
     }
 
@@ -135,7 +176,6 @@ public final class Utils {
                 APPLY_METHOD.invoke(editor);
                 return;
             } catch (Exception e) {
-                FileLogger.w(TAG, "SharedPreferences.apply() failed via reflection, falling back to commit()", e);
             }
         }
         editor.commit();
@@ -171,7 +211,6 @@ public final class Utils {
                 java.lang.reflect.Field f = WebSettings.class.getField("MIXED_CONTENT_ALWAYS_ALLOW");
                 m.invoke(settings, f.getInt(null));
             } catch (Exception e) {
-                FileLogger.w(TAG, "Could not allow WebView mixed content", e);
             }
         }
     }
@@ -181,7 +220,6 @@ public final class Utils {
             Method m = WebSettings.class.getMethod("setDomStorageEnabled", boolean.class);
             m.invoke(settings, true);
         } catch (Exception e) {
-            FileLogger.w(TAG, "DOM storage not available", e);
         }
     }
 
@@ -194,7 +232,6 @@ public final class Utils {
             setPath.invoke(settings, dir.getAbsolutePath());
             setEnabled.invoke(settings, true);
         } catch (Exception e) {
-            FileLogger.w(TAG, "WebView database storage not available", e);
         }
     }
 
@@ -210,7 +247,6 @@ public final class Utils {
             setMax.invoke(settings, 8L * 1024L * 1024L);
             setEnabled.invoke(settings, true);
         } catch (Exception e) {
-            FileLogger.w(TAG, "WebView app cache not available", e);
         }
     }
 
@@ -225,7 +261,6 @@ public final class Utils {
                 Method m = WebSettings.class.getMethod("setDisplayZoomControls", boolean.class);
                 m.invoke(settings, false);
             } catch (Exception e) {
-                FileLogger.w(TAG, "Could not disable WebView display zoom controls", e);
             }
         }
     }
@@ -236,7 +271,6 @@ public final class Utils {
                 Method m = Activity.class.getMethod("invalidateOptionsMenu");
                 m.invoke(activity);
             } catch (Exception e) {
-                FileLogger.w(TAG, "Could not invalidate options menu", e);
             }
         }
     }
@@ -247,7 +281,6 @@ public final class Utils {
                 Method m = MenuItem.class.getMethod("setShowAsAction", int.class);
                 m.invoke(item, flag);
             } catch (Exception e) {
-                FileLogger.w(TAG, "Could not set showAsAction on menu item", e);
             }
         }
     }
@@ -267,7 +300,6 @@ public final class Utils {
                     return true;
                 }
             } catch (Exception e) {
-                FileLogger.w(TAG, "Uninstall via " + action + " failed for " + pkg, e);
             }
         }
         return false;
@@ -360,7 +392,6 @@ public final class Utils {
             os.flush();
             return process.waitFor() == 0;
         } catch (Exception e) {
-            if (logFailure) FileLogger.w(TAG, "Root command failed: " + command, e);
             return false;
         } finally {
             try {
@@ -379,42 +410,6 @@ public final class Utils {
         return "'" + value.replace("'", "'\\''") + "'";
     }
 
-    public static boolean shareLogFile(Context context) {
-        File logFile = FileLogger.getLogFile();
-        if (context == null || logFile == null || !logFile.exists() || logFile.length() == 0) {
-            return false;
-        }
-        try {
-            Uri logUri;
-            if (android.os.Build.VERSION.SDK_INT >= 24) {
-                logUri = Uri.parse("content://com.oddmarket.provider/log");
-            } else {
-                logUri = Uri.fromFile(logFile);
-            }
-
-            Intent sendIntent = new Intent(Intent.ACTION_SEND);
-            sendIntent.setType("text/plain");
-            sendIntent.putExtra(Intent.EXTRA_SUBJECT, "OddMarket log");
-            sendIntent.putExtra(Intent.EXTRA_STREAM, logUri);
-            sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-
-            String label;
-            try {
-                label = context.getString(R.string.settings_send_log_label);
-            } catch (Exception e) {
-                label = "Send log";
-            }
-
-            Intent chooser = Intent.createChooser(sendIntent, label);
-            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(chooser);
-            return true;
-        } catch (Exception e) {
-            FileLogger.w(TAG, "Failed to launch log share intent", e);
-            return false;
-        }
-    }
-
     public static boolean isValidPackageName(String pkg) {
         if (pkg == null || pkg.length() == 0 || pkg.length() > 200) return false;
         return pkg.matches("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+");
@@ -427,7 +422,6 @@ public final class Utils {
 
     public static boolean uninstallPackageAsRoot(String pkg) {
         if (!isValidPackageName(pkg)) {
-            FileLogger.w(TAG, "Refusing root uninstall, package name looks invalid: " + pkg);
             return false;
         }
         return runAsRoot("pm uninstall " + shellQuote(pkg));
@@ -471,9 +465,10 @@ public final class Utils {
         try {
             BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
             try {
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = r.readLine()) != null) sb.append(line).append("\n");
+                StringBuilder sb = new StringBuilder(4096);
+                char[] buf = new char[4096];
+                int n;
+                while ((n = r.read(buf)) != -1) sb.append(buf, 0, n);
                 return sb.toString();
             } finally {
                 r.close();
@@ -489,25 +484,73 @@ public final class Utils {
     }
 
     public static Bitmap downloadAndDecodeBitmap(String urlStr, int maxDimensionPx) throws Exception {
+        return downloadAndDecodeBitmap(urlStr, maxDimensionPx, false);
+    }
+
+    /**
+     * @param opaque true for images without transparency (screenshots, banners): decoded as RGB_565,
+     *               i.e. 2 bytes/pixel instead of 4. Icons keep ARGB_8888 to preserve alpha.
+     */
+    public static Bitmap downloadAndDecodeBitmap(String urlStr, int maxDimensionPx, boolean opaque) throws Exception {
+
+        File file = ImageDiskCache.fetchFile(urlStr, 5000);
+        if (file != null) return decodeSampledFile(file, maxDimensionPx, opaque);
 
         byte[] data = ImageDiskCache.fetch(urlStr, 5000).bytes;
 
         BitmapFactory.Options boundsOpts = new BitmapFactory.Options();
         boundsOpts.inJustDecodeBounds = true;
         BitmapFactory.decodeByteArray(data, 0, data.length, boundsOpts);
-
         if (boundsOpts.outWidth <= 0 || boundsOpts.outHeight <= 0) return null;
 
+        BitmapFactory.Options decodeOpts = bitmapOptions(
+                sampleSizeFor(boundsOpts.outWidth, boundsOpts.outHeight, maxDimensionPx), opaque);
+        return BitmapFactory.decodeByteArray(data, 0, data.length, decodeOpts);
+    }
+
+    private static Bitmap decodeSampledFile(File file, int maxDimensionPx, boolean opaque) throws Exception {
+        BitmapFactory.Options boundsOpts = new BitmapFactory.Options();
+        boundsOpts.inJustDecodeBounds = true;
+        java.io.FileInputStream probe = new java.io.FileInputStream(file);
+        try {
+            BitmapFactory.decodeFileDescriptor(probe.getFD(), null, boundsOpts);
+        } finally {
+            probe.close();
+        }
+        if (boundsOpts.outWidth <= 0 || boundsOpts.outHeight <= 0) {
+
+            file.delete();
+            return null;
+        }
+
+        BitmapFactory.Options decodeOpts = bitmapOptions(
+                sampleSizeFor(boundsOpts.outWidth, boundsOpts.outHeight, maxDimensionPx), opaque);
+        java.io.FileInputStream in = new java.io.FileInputStream(file);
+        try {
+            return BitmapFactory.decodeFileDescriptor(in.getFD(), null, decodeOpts);
+        } finally {
+            in.close();
+        }
+    }
+
+    private static int sampleSizeFor(int width, int height, int maxDimensionPx) {
         int sampleSize = 1;
-        int largestSide = Math.max(boundsOpts.outWidth, boundsOpts.outHeight);
+        int largestSide = Math.max(width, height);
         int limit = Math.max(1, maxDimensionPx);
         while (largestSide / (sampleSize * 2) >= limit) {
             sampleSize *= 2;
         }
+        return sampleSize;
+    }
 
-        BitmapFactory.Options decodeOpts = new BitmapFactory.Options();
-        decodeOpts.inSampleSize = sampleSize;
-        return BitmapFactory.decodeByteArray(data, 0, data.length, decodeOpts);
+    private static BitmapFactory.Options bitmapOptions(int sampleSize, boolean opaque) {
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inSampleSize = sampleSize;
+        if (opaque) {
+            o.inPreferredConfig = Bitmap.Config.RGB_565;
+            o.inDither = true;
+        }
+        return o;
     }
 
     public static Context resolveAppContext(Context existing, Context incoming) {
@@ -536,7 +579,6 @@ public final class Utils {
                         return wrapped;
                     }
                 } catch (Exception e) {
-                    FileLogger.w(TAG, "createConfigurationContext reflection failed, falling back to updateConfiguration()", e);
                 }
             }
 
@@ -544,7 +586,6 @@ public final class Utils {
             res.updateConfiguration(config, res.getDisplayMetrics());
             return base;
         } catch (Exception e) {
-            FileLogger.w(TAG, "Failed to apply persisted locale to context", e);
             return base;
         }
     }
@@ -568,7 +609,6 @@ public final class Utils {
                 java.lang.reflect.Method m1 = File.class.getMethod(methodName, boolean.class);
                 m1.invoke(file, true);
             } catch (Exception e2) {
-                FileLogger.w(TAG, "Could not make file world-" + permissionLabel + " (pre-Gingerbread runtime?)", e2);
             }
         }
     }
@@ -602,7 +642,6 @@ public final class Utils {
         if (canWriteTo(externalDir)) {
             return externalDir;
         }
-        FileLogger.w(TAG, "External Download folder is not actually writable, falling back to internal storage for APK downloads");
         return internalApkDownloadDir(context);
     }
 }

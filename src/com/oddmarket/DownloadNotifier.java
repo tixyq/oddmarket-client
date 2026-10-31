@@ -56,7 +56,6 @@ final class DownloadNotifier {
             Method create = NotificationManager.class.getMethod("createNotificationChannel", chCls);
             create.invoke(notificationManager(c), channel);
         } catch (Throwable t) {
-            FileLogger.w(Utils.TAG, "createNotificationChannel failed", t);
         }
     }
 
@@ -164,7 +163,6 @@ final class DownloadNotifier {
         try {
             notificationManager(c).notify(id, n);
         } catch (Throwable t) {
-            FileLogger.w(Utils.TAG, "notify failed", t);
         }
     }
 
@@ -229,7 +227,6 @@ final class DownloadNotifier {
             if (ongoing) n.flags |= Notification.FLAG_ONGOING_EVENT;
             return n;
         } catch (Throwable t) {
-            FileLogger.w(Utils.TAG, "build notification failed", t);
             return null;
         }
     }

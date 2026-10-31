@@ -20,7 +20,6 @@ public final class ApkInstaller {
     public static void install(final Activity activity, final DownloadCenter.Result r, final Callback callback) {
         final File file = r.file;
         final boolean wasUpdate = r.wasUpdate;
-        FileLogger.i(Utils.TAG, "installApk: " + (file != null ? file.getAbsolutePath() : "null"));
 
         if (file == null || !file.exists()) {
             showInstallError(activity, r, R.string.toast_install_failed_not_found);
@@ -28,11 +27,10 @@ public final class ApkInstaller {
         }
 
         final Handler handler = new Handler(Looper.getMainLooper());
-        new Thread(new Runnable() {
+        Utils.runBackground(new Runnable() {
             public void run() {
                 if (Utils.isRootAvailable()) {
                     final boolean success = Utils.installApkAsRoot(file.getAbsolutePath());
-                    FileLogger.i(Utils.TAG, "installApk: root install result=" + success);
                     handler.post(new Runnable() {
                         public void run() {
                             if (success) {
@@ -52,7 +50,7 @@ public final class ApkInstaller {
                     });
                 }
             }
-        }).start();
+        });
     }
 
     private static void showInstallError(Activity activity, DownloadCenter.Result r, int textRes) {
@@ -61,7 +59,6 @@ public final class ApkInstaller {
 
     private static void openSystemInstaller(Activity activity, DownloadCenter.Result r) {
         File file = r.file;
-        FileLogger.i(Utils.TAG, "openSystemInstaller: " + file.getAbsolutePath());
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW);
             if (android.os.Build.VERSION.SDK_INT >= 24) {

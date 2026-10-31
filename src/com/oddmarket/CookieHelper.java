@@ -17,8 +17,17 @@ public final class CookieHelper {
 
     private CookieHelper() {}
 
-    public static synchronized void init(Context context) {
+    private static volatile Context pendingContext;
+
+    /** Cheap: only remembers the context. The WebView cookie stack is created on first real use. */
+    public static void init(Context context) {
+        pendingContext = context.getApplicationContext();
+    }
+
+    private static synchronized void ensureInit() {
         if (initialized) return;
+        Context context = pendingContext;
+        if (context == null) return;
 
         if (Build.VERSION.SDK_INT < 21) {
             CookieSyncManager.createInstance(context.getApplicationContext());
@@ -31,6 +40,8 @@ public final class CookieHelper {
     }
 
     public static void enableCookiesForWebView(android.webkit.WebView webView) {
+        if (pendingContext == null) pendingContext = webView.getContext().getApplicationContext();
+        ensureInit();
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
         if (Build.VERSION.SDK_INT >= 21) {
@@ -39,7 +50,6 @@ public final class CookieHelper {
                         "setAcceptThirdPartyCookies", android.webkit.WebView.class, boolean.class);
                 m.invoke(cookieManager, webView, true);
             } catch (Exception e) {
-                FileLogger.w(Utils.TAG, "Could not enable third-party WebView cookies", e);
             }
         }
     }
@@ -75,25 +85,25 @@ public final class CookieHelper {
     }
 
     private static void flushNow() {
+        ensureInit();
         if (Build.VERSION.SDK_INT >= 21) {
             try {
                 CookieManager cm = CookieManager.getInstance();
                 java.lang.reflect.Method flushMethod = cm.getClass().getMethod("flush");
                 flushMethod.invoke(cm);
             } catch (Exception e) {
-                FileLogger.w(Utils.TAG, "CookieManager.flush() via reflection failed", e);
             }
         } else {
             try {
                 CookieSyncManager.getInstance().sync();
             } catch (IllegalStateException e) {
 
-                FileLogger.w(Utils.TAG, "CookieSyncManager not initialized", e);
             }
         }
     }
 
     public static void clearSessionCookie(String url) {
+        ensureInit();
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setCookie(url, "PHPSESSID=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT");
         flush();

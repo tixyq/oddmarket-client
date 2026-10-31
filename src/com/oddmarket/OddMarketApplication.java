@@ -18,60 +18,30 @@ public class OddMarketApplication extends Application {
     protected void attachBaseContext(Context base) {
         Utils.deviceCountry = Locale.getDefault().getCountry();
         super.attachBaseContext(Utils.applyLocale(base));
-
-        FileLogger.startNewSession(base);
-        installCrashLogger(base);
-    }
-
-    private static void installCrashLogger(final Context context) {
-        final Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
-        Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
-            public void uncaughtException(Thread thread, Throwable ex) {
-                try {
-                    FileLogger.init(context);
-                    FileLogger.e(Utils.TAG, "FATAL crash, thread=" + thread.getName()
-                            + " model=" + android.os.Build.MODEL
-                            + " sdk=" + android.os.Build.VERSION.SDK_INT, ex);
-                } catch (Throwable loggingFailure) {
-
-                }
-
-                try {
-                    Utils.shareLogFile(context);
-                } catch (Throwable shareFailure) {
-
-                }
-
-                try {
-                    Thread.sleep(300);
-                } catch (InterruptedException ignored) {
-                }
-
-                if (previous != null) {
-                    previous.uncaughtException(thread, ex);
-                } else {
-                    android.os.Process.killProcess(android.os.Process.myPid());
-                    Runtime.getRuntime().exit(10);
-                }
-            }
-        });
     }
 
     @Override
     public void onCreate() {
         super.onCreate();
-        FileLogger.i(Utils.TAG, "OddMarketApplication.onCreate");
+        StrictModeSetup.enableIfDebuggable(this);
         Utils.disableConnectionReuse();
-        Utils.limitDnsCacheTtl();
-        Utils.checkRootInBackground(this);
         CookieHelper.init(this);
-        ImageDiskCache.init(this);
 
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         Theme.init(this, prefs);
 
-        UpdateScheduler.ensureScheduled(this);
-        registerPackageEvents();
+        // Everything not needed for the first frame runs off the main thread.
+        final Context app = this;
+        Utils.runBackground(new Runnable() {
+            public void run() {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                Utils.limitDnsCacheTtl();
+                ImageDiskCache.init(app);
+                Utils.checkRootInBackground(app);
+                UpdateScheduler.ensureScheduled(app);
+                registerPackageEvents();
+            }
+        });
     }
 
     private void registerPackageEvents() {
@@ -88,7 +58,6 @@ public class OddMarketApplication extends Application {
                 }
             }, f);
         } catch (Throwable t) {
-            FileLogger.w(Utils.TAG, "registerPackageEvents failed", t);
         }
     }
 
@@ -99,14 +68,12 @@ public class OddMarketApplication extends Application {
     }
 
     public void onTrimMemory(int level) {
-        if (level >= 60) MainActivity.trimMemory(true);
-        else if (level >= 40) MainActivity.trimMemory(false);
+        MainActivity.trimMemoryLevel(level);
     }
 
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        FileLogger.i(Utils.TAG, "onConfigurationChanged");
         if (android.os.Build.VERSION.SDK_INT < 17) {
             SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
             String language = prefs.getString(KEY_LANGUAGE, LANG_EN);

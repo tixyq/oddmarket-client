@@ -10,21 +10,21 @@ public class UpdateCheckReceiver extends BroadcastReceiver {
     public void onReceive(final Context context, Intent intent) {
         final Context app = context.getApplicationContext();
         String action = intent != null ? intent.getAction() : null;
-        FileLogger.init(app);
 
         final boolean rearm = Intent.ACTION_BOOT_COMPLETED.equals(action)
                 || "android.intent.action.MY_PACKAGE_REPLACED".equals(action);
         if (rearm) UpdateScheduler.schedule(app);
 
-        final PendingResult pending = goAsync();
-        new Thread(new Runnable() {
+        // goAsync() exists since API 11; older systems just run the work on the shared background pool.
+        final PendingResult pending = android.os.Build.VERSION.SDK_INT >= 11 ? goAsync() : null;
+        Utils.runBackground(new Runnable() {
             public void run() {
                 try {
                     UpdateChecker.check(app);
                 } finally {
-                    pending.finish();
+                    if (pending != null) pending.finish();
                 }
             }
-        }, "update-check-bg").start();
+        });
     }
 }

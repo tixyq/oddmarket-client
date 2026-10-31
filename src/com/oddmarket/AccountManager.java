@@ -116,13 +116,11 @@ public final class AccountManager {
                 java.lang.reflect.Method m = View.class.getMethod("setAlpha", float.class);
                 m.invoke(webView, 0f);
             } catch (Exception e) {
-                FileLogger.w(Utils.TAG, "Could not set WebView alpha", e);
             }
         }
     }
 
     private static Cancelable fetchViaWebView(final Activity activity, final ViewGroup hostView, final String url, final String label, final BodyCallback callback) {
-        FileLogger.w(Utils.TAG, label + ": starting fetch for " + url);
         if (activity == null || activity.isFinishing() || hostView == null) {
             if (callback != null) callback.onBody(null);
             return new Cancelable() {
@@ -159,7 +157,6 @@ public final class AccountManager {
         try {
             webView.addJavascriptInterface(domBridge, LEGACY_JS_BRIDGE_NAME);
         } catch (Exception e) {
-            FileLogger.w(Utils.TAG, label + ": could not register DOM bridge", e);
         }
 
         final Runnable cleanup = new Runnable() {
@@ -192,13 +189,10 @@ public final class AccountManager {
                         synchronized (lock) {
                             if (done[0] || myGen != gen[0]) return;
                             if (body == null || body.contains("toNumbers")) {
-                                FileLogger.w(Utils.TAG, label + ": still a challenge page or empty DOM, retrying ("
-                                        + (body == null ? "no body" : "challenge markup present") + ")");
                                 handler.removeCallbacks(fetchRun[0]);
                                 handler.postDelayed(fetchRun[0], QUIET_PERIOD_MS);
                                 return;
                             }
-                            FileLogger.w(Utils.TAG, label + ": got clean body, done");
                             done[0] = true;
                         }
                         cleanup.run();
@@ -227,7 +221,6 @@ public final class AccountManager {
                     if (done[0]) return;
                     done[0] = true;
                 }
-                FileLogger.w(Utils.TAG, label + ": WebView load error " + errorCode + " (" + description + ")");
                 cleanup.run();
                 if (callback != null) callback.onBody(null);
             }
@@ -243,7 +236,6 @@ public final class AccountManager {
                     if (done[0]) return;
                     done[0] = true;
                 }
-                FileLogger.w(Utils.TAG, label + ": timed out after " + WEBVIEW_TIMEOUT_MS + "ms");
                 cleanup.run();
                 if (callback != null) callback.onBody(null);
             }
@@ -284,7 +276,6 @@ public final class AccountManager {
                     + LEGACY_JS_BRIDGE_NAME + ".onHtml(r);}catch(e){"
                     + LEGACY_JS_BRIDGE_NAME + ".onHtml('');}})()");
         } catch (Exception e) {
-            FileLogger.w(Utils.TAG, "Legacy DOM bridge failed", e);
             callback.onBody(null);
         }
     }

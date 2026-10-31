@@ -25,7 +25,6 @@ final class PerfGuard {
             if (khz > maxKhz) maxKhz = khz;
         }
         cpuGhz = maxKhz > 0L ? maxKhz / 1000000f : -1f;
-        FileLogger.i(Utils.TAG, "PerfGuard: cpu max " + cpuGhz + " GHz, cores " + n);
         return cpuGhz;
     }
 
@@ -130,17 +129,14 @@ final class PerfGuard {
         }
         if (++badWindows < BAD_WINDOWS) return false;
         badWindows = 0;
-        FileLogger.i(Utils.TAG, "PerfGuard: " + fps + " fps while moving");
         return disable(c, KEY_BLUR, R.string.perf_blur_off);
     }
 
     private static boolean disable(Context c, String key, int toastRes) {
         Utils.savePrefs(prefs(c).edit().putBoolean(key, false));
-        FileLogger.i(Utils.TAG, "PerfGuard: " + key + " switched off automatically");
         try {
             Toast.makeText(c.getApplicationContext(), toastRes, Toast.LENGTH_LONG).show();
         } catch (Exception e) {
-            FileLogger.w(Utils.TAG, "PerfGuard: toast failed", e);
         }
         return true;
     }

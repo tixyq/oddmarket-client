@@ -94,8 +94,6 @@ public class ManageAppsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         SingleInstance.claim(this);
-        FileLogger.init(this);
-        FileLogger.i(Utils.TAG, "ManageAppsActivity.onCreate");
         GhostTitle.prepareWindow(this);
         paintWindow();
         setTitle(R.string.menu_manage_apps);
@@ -198,11 +196,11 @@ public class ManageAppsActivity extends Activity {
         ghostTitle.showProgressIndeterminate();
         showStatus(R.string.status_loading, 0);
 
-        new Thread(new Runnable() {
+        Utils.runBackground(new Runnable() {
             public void run() {
                 runLoad();
             }
-        }, "manage-apps").start();
+        });
     }
 
     private void runLoad() {
@@ -291,7 +289,6 @@ public class ManageAppsActivity extends Activity {
                         }
                     } catch (Exception e) {
 
-                        FileLogger.w(Utils.TAG, "ManageAppsActivity: lookup failed for " + pkg, e);
                     } finally {
                         done.countDown();
                     }
@@ -533,7 +530,7 @@ public class ManageAppsActivity extends Activity {
 
     private void startDelete(final List<String> targets) {
         ghostTitle.showProgressIndeterminate();
-        new Thread(new Runnable() {
+        Utils.runBackground(new Runnable() {
             public void run() {
                 final boolean root = Utils.isRootAvailable();
                 if (root) {
@@ -565,7 +562,7 @@ public class ManageAppsActivity extends Activity {
                     });
                 }
             }
-        }, "manage-delete").start();
+        });
     }
 
     private void uninstallNext() {
@@ -599,7 +596,6 @@ public class ManageAppsActivity extends Activity {
                     return true;
                 }
             } catch (Exception e) {
-                FileLogger.w(Utils.TAG, "Uninstall via " + actions[i] + " failed for " + pkg, e);
             }
         }
         return false;
@@ -652,11 +648,11 @@ public class ManageAppsActivity extends Activity {
         requestNotificationPermission();
 
         ghostTitle.showProgressIndeterminate();
-        new Thread(new Runnable() {
+        Utils.runBackground(new Runnable() {
             public void run() {
                 resolveAndQueue(targets);
             }
-        }, "manage-update").start();
+        });
     }
 
     private static final class Resolved {
@@ -701,7 +697,6 @@ public class ManageAppsActivity extends Activity {
                     ready.add(new Resolved(it.pkg, name, version, url));
                 }
             } catch (Exception e) {
-                FileLogger.w(Utils.TAG, "ManageAppsActivity: update lookup failed for " + it.pkg, e);
             }
         }
         ex.shutdownNow();

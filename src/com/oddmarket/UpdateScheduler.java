@@ -31,7 +31,6 @@ final class UpdateScheduler {
             if (PendingIntent.getBroadcast(app, REQ, intent(app), noCreate) != null) return;
             schedule(app);
         } catch (Throwable t) {
-            FileLogger.w(Utils.TAG, "UpdateScheduler: ensureScheduled failed", t);
         }
     }
 
@@ -46,7 +45,6 @@ final class UpdateScheduler {
             am.setInexactRepeating(AlarmManager.ELAPSED_REALTIME,
                     SystemClock.elapsedRealtime() + INTERVAL_MS, INTERVAL_MS, pi);
         } catch (Throwable t) {
-            FileLogger.w(Utils.TAG, "UpdateScheduler: schedule failed", t);
         }
     }
 }

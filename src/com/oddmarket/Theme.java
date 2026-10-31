@@ -471,7 +471,6 @@ public class Theme {
                 applyTaskHeader(activity, bg);
             }
         } catch (Throwable t) {
-            FileLogger.w(Utils.TAG, "Theme.applyWindow failed", t);
         }
     }
 

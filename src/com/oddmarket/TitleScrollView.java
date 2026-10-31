@@ -28,7 +28,6 @@ public class TitleScrollView extends ScrollView {
             java.lang.reflect.Method m = android.view.ViewGroup.class.getMethod("setClipToPadding", boolean.class);
             m.invoke(this, Boolean.FALSE);
         } catch (Exception e) {
-            FileLogger.w(Utils.TAG, "TitleScrollView: setClipToPadding not available", e);
         }
     }
 

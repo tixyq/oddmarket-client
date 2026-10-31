@@ -44,6 +44,16 @@ public class TabImageDrawable extends Drawable {
             if (id != 0) {
                 BitmapFactory.Options o = new BitmapFactory.Options();
                 o.inScaled = false;
+
+                BitmapFactory.Options probe = new BitmapFactory.Options();
+                probe.inJustDecodeBounds = true;
+                probe.inScaled = false;
+                BitmapFactory.decodeResource(context.getResources(), id, probe);
+                float density = context.getResources().getDisplayMetrics().density;
+                int targetH = Math.max(1, Math.round(55f * density));
+                int sample = 1;
+                while (probe.outHeight > 0 && probe.outHeight / (sample * 2) >= targetH) sample *= 2;
+                o.inSampleSize = sample;
                 b = BitmapFactory.decodeResource(context.getResources(), id, o);
             }
         } catch (Throwable t) {

@@ -320,7 +320,6 @@ public class GhostTitle extends View {
             activity.requestWindowFeature(Window.FEATURE_NO_TITLE);
             Theme.applyWindow(activity);
         } catch (Exception e) {
-            FileLogger.w(Utils.TAG, "GhostTitle.prepareWindow failed (called after setContentView?)", e);
         }
     }
 
@@ -362,7 +361,6 @@ public class GhostTitle extends View {
                         }
                     }));
         } catch (Exception e) {
-            FileLogger.w(Utils.TAG, "GhostTitle.installMenuKeyHook failed", e);
         }
     }
 
@@ -397,7 +395,6 @@ public class GhostTitle extends View {
                 invalidate();
             }
         } catch (Throwable t) {
-            FileLogger.w(Utils.TAG, "GhostTitle.setTitleImage failed", t);
         }
         return this;
     }
@@ -908,7 +905,6 @@ public class GhostTitle extends View {
             }
         } catch (Throwable t) {
             blurBroken = true;
-            FileLogger.w(Utils.TAG, "GhostTitle: backdrop blur disabled", t);
         }
     }
 

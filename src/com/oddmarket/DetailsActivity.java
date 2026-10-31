@@ -36,7 +36,6 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.ScrollView;
-import android.util.Log;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import org.json.JSONArray;
@@ -130,8 +129,6 @@ public class DetailsActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        FileLogger.init(this);
-        FileLogger.i(Utils.TAG, "DetailsActivity.onCreate, intent=" + getIntent());
         GhostTitle.prepareWindow(this);
         setTitle(R.string.title_details);
 
@@ -197,7 +194,7 @@ public class DetailsActivity extends Activity {
         if (ghostTitle != null) ghostTitle.showProgressIndeterminate();
 
         final String pkg = currentPkg;
-        Thread th = new Thread(new Runnable() {
+        Utils.runBackground(new Runnable() {
             public void run() {
                 final JSONObject obj;
                 int errRes = 0;
@@ -211,7 +208,6 @@ public class DetailsActivity extends Activity {
                         errRes = R.string.status_app_not_found;
                     }
                 } catch (Exception e) {
-                    FileLogger.w(Utils.TAG, "Failed to load app " + pkg, e);
                     errRes = R.string.status_couldnt_load;
                 }
                 obj = found;
@@ -231,9 +227,7 @@ public class DetailsActivity extends Activity {
                     }
                 });
             }
-        }, "app-fetch");
-        th.setDaemon(true);
-        th.start();
+        });
     }
 
     private void applyFetchedApp(JSONObject obj) {
@@ -277,7 +271,6 @@ public class DetailsActivity extends Activity {
             java.lang.reflect.Method m = android.view.View.class.getMethod("setScrollbarFadingEnabled", boolean.class);
             m.invoke(scrollView, false);
         } catch (Exception e) {
-            Log.d(Utils.TAG, "setScrollbarFadingEnabled not available", e);
         }
 
         scrollView.setVerticalScrollBarEnabled(true);
@@ -513,7 +506,7 @@ public class DetailsActivity extends Activity {
             return;
         }
         final String url = MainActivity.fixApkUrl(this, downloadUrl);
-        Thread th = new Thread(new Runnable() {
+        Utils.runBackground(new Runnable() {
             public void run() {
                 final long n = AppSize.fetch(url);
                 handler.post(new Runnable() {
@@ -522,10 +515,7 @@ public class DetailsActivity extends Activity {
                     }
                 });
             }
-        }, "app-size");
-        th.setDaemon(true);
-        th.setPriority(Thread.MIN_PRIORITY);
-        th.start();
+        });
     }
 
     private void showSize(long bytes) {
@@ -545,13 +535,11 @@ public class DetailsActivity extends Activity {
                 Method setStateListAnimatorMethod = View.class.getMethod("setStateListAnimator", stateListAnimatorClass);
                 setStateListAnimatorMethod.invoke(button, new Object[]{ null });
             } catch (Exception e) {
-                FileLogger.w(Utils.TAG, "Could not clear stateListAnimator on the action button", e);
             }
             try {
                 Method setElevationMethod = View.class.getMethod("setElevation", float.class);
                 setElevationMethod.invoke(button, 0f);
             } catch (Exception e) {
-                FileLogger.w(Utils.TAG, "Could not clear elevation on the action button", e);
             }
         }
     }
@@ -1313,7 +1301,6 @@ public class DetailsActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        FileLogger.i(Utils.TAG, "DetailsActivity.onDestroy");
         destroyed = true;
         handler.removeCallbacks(swapToFullRunnable);
         if (zoomView != null) zoomView.stop();
@@ -1458,7 +1445,7 @@ public class DetailsActivity extends Activity {
             return;
         }
 
-        new Thread(new Runnable() {
+        Utils.runBackground(new Runnable() {
             public void run() {
                 final boolean rootAvailable = Utils.isRootAvailable();
                 if (rootAvailable) {
@@ -1483,11 +1470,10 @@ public class DetailsActivity extends Activity {
                     });
                 }
             }
-        }).start();
+        });
     }
 
     private void downloadAndInstall(final String apkUrl, final String appName) {
-        FileLogger.i(Utils.TAG, "downloadAndInstall: " + appName + " <- " + apkUrl);
         if (!Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
             Toast.makeText(this, R.string.toast_sdcard_required, Toast.LENGTH_SHORT).show();
             return;

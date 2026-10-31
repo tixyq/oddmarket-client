@@ -49,7 +49,6 @@ final class InstalledCatalog {
                 result.add(p.packageName);
             }
         } catch (Throwable t) {
-            FileLogger.w(Utils.TAG, "InstalledCatalog: installed packages failed", t);
         }
         return result;
     }
@@ -84,7 +83,6 @@ final class InstalledCatalog {
             String s = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_CACHE, "");
             if (s.length() > 0) return new JSONObject(s);
         } catch (Throwable t) {
-            FileLogger.w(Utils.TAG, "InstalledCatalog: cache read failed", t);
         }
         return new JSONObject();
     }
@@ -117,7 +115,6 @@ final class InstalledCatalog {
             ed.putString(KEY_CACHE, s);
             Utils.savePrefs(ed);
         } catch (Throwable t) {
-            FileLogger.w(Utils.TAG, "InstalledCatalog: cache write failed", t);
         }
     }
 
@@ -184,7 +181,6 @@ final class InstalledCatalog {
                             putCache(cache, pkg, makeEntry(fetchOne(pkg)));
                         } catch (Exception e) {
                             failed.incrementAndGet();
-                            FileLogger.w(Utils.TAG, "InstalledCatalog: lookup failed for " + pkg, e);
                         } finally {
                             done.countDown();
                         }

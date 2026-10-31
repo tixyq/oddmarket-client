@@ -46,7 +46,6 @@ public final class PopupMenuCompat {
                     try {
                         activity.onOptionsItemSelected(shown.get(which).proxy);
                     } catch (Exception e) {
-                        FileLogger.w(Utils.TAG, "PopupMenuCompat: menu action failed", e);
                     }
                 }
             });
@@ -63,7 +62,6 @@ public final class PopupMenuCompat {
             dialog.show();
             return true;
         } catch (Exception e) {
-            FileLogger.w(Utils.TAG, "PopupMenuCompat.show failed, falling back to openOptionsMenu", e);
             return false;
         }
     }
@@ -78,7 +76,6 @@ public final class PopupMenuCompat {
                 return AlertDialog.Builder.class.getConstructor(Context.class, int.class)
                         .newInstance(activity, Integer.valueOf(theme));
             } catch (Exception e) {
-                FileLogger.w(Utils.TAG, "PopupMenuCompat: themed builder unavailable", e);
             }
         }
         return new AlertDialog.Builder(activity);

@@ -116,7 +116,6 @@ public final class DownloadCenter {
         List<Listener> copy = new ArrayList<Listener>(LISTENERS);
         for (int i = 0; i < copy.size(); i++) {
             try { copy.get(i).onDownloadChanged(progressOnly); } catch (Throwable t) {
-                FileLogger.w(Utils.TAG, "DownloadCenter listener failed", t);
             }
         }
     }
@@ -189,7 +188,6 @@ public final class DownloadCenter {
                 app.startService(intent);
             }
         } catch (Throwable t) {
-            FileLogger.e(Utils.TAG, "Cannot start DownloadService", t);
             DownloadNotifier.cancelProgress(app);
             current = null;
             serviceItem = null;
@@ -213,7 +211,6 @@ public final class DownloadCenter {
         try {
             app.stopService(new Intent(app, DownloadService.class));
         } catch (Throwable t) {
-            FileLogger.w(Utils.TAG, "stopService failed", t);
         }
     }
 

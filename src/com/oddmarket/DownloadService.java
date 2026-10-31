@@ -33,7 +33,6 @@ public class DownloadService extends Service {
             }
             wakeLock.acquire(WAKE_LOCK_TIMEOUT_MS);
         } catch (Exception e) {
-            FileLogger.w(Utils.TAG, "Failed to acquire wake lock for download", e);
         }
     }
 
@@ -41,7 +40,6 @@ public class DownloadService extends Service {
         try {
             if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         } catch (Exception e) {
-            FileLogger.w(Utils.TAG, "Failed to release wake lock", e);
         }
     }
 
@@ -111,7 +109,6 @@ public class DownloadService extends Service {
                 }
             }
         } catch (Throwable t) {
-            FileLogger.w(Utils.TAG, "startForeground failed", t);
         }
     }
 
@@ -133,7 +130,6 @@ public class DownloadService extends Service {
 
     @Override
     public void onDestroy() {
-        FileLogger.i(Utils.TAG, "DownloadService.onDestroy");
 
         Task t = task;
         if (t != null && t.gen == DownloadCenter.generation && !t.finished) {
@@ -463,10 +459,8 @@ public class DownloadService extends Service {
                 } else {
                     same = compareRemoteTail(httpUrl, false, local, len, cdOffset);
                 }
-                if (same) FileLogger.i(Utils.TAG, "Download skipped, identical local file: " + local.getAbsolutePath());
                 return same;
             } catch (Throwable t) {
-                FileLogger.w(Utils.TAG, "reuseLocalFile failed, downloading normally", t);
                 return false;
             }
         }
