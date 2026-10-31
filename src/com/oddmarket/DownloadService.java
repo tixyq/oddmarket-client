@@ -306,7 +306,9 @@ public class DownloadService extends Service {
             } catch (CancelledException e) {
                 wasCancelled = true;
                 deletePartial();
-            } catch (final Exception e) {
+            } catch (final Throwable e) {
+                // Throwable on purpose: an OutOfMemoryError / NoSuchMethodError in this thread would
+                // otherwise kill the whole process (and leave the notification stuck) while the app is in background.
                 if (cancelled) {
                     wasCancelled = true;
                     deletePartial();

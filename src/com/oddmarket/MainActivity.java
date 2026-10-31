@@ -265,12 +265,29 @@ public class MainActivity extends Activity {
 
         loadData(true);
         loadBanners();
+        askNotificationPermissionOnce();
 
         listView.post(new Runnable() {
             public void run() {
                 listView.requestFocus();
             }
         });
+    }
+
+    /** Android 13+: without POST_NOTIFICATIONS the "updates available" notification is silently dropped. Ask once. */
+    private void askNotificationPermissionOnce() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return;
+        try {
+            android.content.SharedPreferences prefs = getSharedPreferences("prefs", MODE_PRIVATE);
+            if (prefs.getBoolean("notif_perm_asked", false)) return;
+            java.lang.reflect.Method check = Context.class.getMethod("checkSelfPermission", String.class);
+            int r = (Integer) check.invoke(this, "android.permission.POST_NOTIFICATIONS");
+            if (r == android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+            Utils.savePrefs(prefs.edit().putBoolean("notif_perm_asked", true));
+            java.lang.reflect.Method req = Activity.class.getMethod("requestPermissions", String[].class, int.class);
+            req.invoke(this, new String[]{"android.permission.POST_NOTIFICATIONS"}, 311);
+        } catch (Throwable ignored) {
+        }
     }
 
     @Override

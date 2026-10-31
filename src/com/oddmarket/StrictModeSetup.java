@@ -19,7 +19,11 @@ final class StrictModeSetup {
         if ((c.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0) return;
         StrictMode.setThreadPolicy(new StrictMode.ThreadPolicy.Builder()
                 .detectDiskReads().detectDiskWrites().detectNetwork().penaltyLog().build());
-        StrictMode.setVmPolicy(new StrictMode.VmPolicy.Builder()
-                .detectLeakedSqlLiteObjects().detectLeakedClosableObjects().penaltyLog().build());
+        StrictMode.VmPolicy.Builder vm = new StrictMode.VmPolicy.Builder().detectLeakedSqlLiteObjects();
+        if (android.os.Build.VERSION.SDK_INT >= 11) {
+            // detectLeakedClosableObjects() does not exist before API 11 (NoSuchMethodError on 2.3.x).
+            vm.detectLeakedClosableObjects();
+        }
+        StrictMode.setVmPolicy(vm.penaltyLog().build());
     }
 }

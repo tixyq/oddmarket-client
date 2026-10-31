@@ -30,7 +30,7 @@ public class WidgetUpdateWorker {
         int state = STATE_ERROR;
         try {
             state = updateWidgetData(appContext);
-        } catch (Exception e) {
+        } catch (Throwable e) {
 
         }
 
@@ -164,7 +164,19 @@ public class WidgetUpdateWorker {
         if (urlStr == null || urlStr.length() == 0) return null;
         try {
             String fixedUrl = MainActivity.fixUrl(appContext, urlStr);
-            return Utils.downloadAndDecodeBitmap(fixedUrl, WIDGET_ICON_MAX_PX);
+            Bitmap src = Utils.downloadAndDecodeBitmap(fixedUrl, WIDGET_ICON_MAX_PX);
+            if (src == null) return null;
+            // RemoteViews are sent over Binder (~1 MB limit shared by all bitmaps): keep icons small.
+            int max = Math.max(src.getWidth(), src.getHeight());
+            if (max > 96) {
+                float k = 96f / max;
+                Bitmap scaled = Bitmap.createScaledBitmap(src,
+                        Math.max(1, Math.round(src.getWidth() * k)),
+                        Math.max(1, Math.round(src.getHeight() * k)), true);
+                if (scaled != src) src.recycle();
+                return scaled;
+            }
+            return src;
         } catch (OutOfMemoryError oom) {
             return null;
         } catch (Exception e) {

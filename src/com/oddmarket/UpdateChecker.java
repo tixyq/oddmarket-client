@@ -73,20 +73,26 @@ final class UpdateChecker {
         if (!force && lastOkElapsed != 0L && now - lastOkElapsed < COOLDOWN_MS) return;
         try {
             InstalledCatalog.Snapshot snap = InstalledCatalog.sync(app);
-            if (snap.failed > 0) {
-
-                return;
-            }
             List<String> names = new ArrayList<String>();
             for (int i = 0; i < snap.hits.size(); i++) {
                 InstalledCatalog.Entry e = snap.hits.get(i);
                 String installed = InstalledCatalog.installedVersion(app, e.pkg);
                 if (installed != null && Utils.isVersionOlder(installed, e.version)) names.add(e.name);
             }
+            if (snap.failed > 0) {
+                // Partial data (some requests failed): only ever ADD/raise a notification, never clear or lower it,
+                // and retry soon (do not start the cooldown).
+                if (names.size() > lastCount(app)) report(app, names);
+                return;
+            }
             report(app, names);
             lastOkElapsed = now;
         } catch (Throwable t) {
         }
+    }
+
+    private static int lastCount(Context app) {
+        return app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_COUNT, 0);
     }
 
     static void report(Context c, List<String> updatableNames) {

@@ -687,6 +687,7 @@ public class DetailsActivity extends Activity {
             return;
         }
 
+        CookieHelper.prepare(this);
         reviewsWebView = new WebView(this);
         reviewsWebView.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));

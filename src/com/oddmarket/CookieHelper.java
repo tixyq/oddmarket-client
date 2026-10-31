@@ -24,17 +24,32 @@ public final class CookieHelper {
         pendingContext = context.getApplicationContext();
     }
 
+    /**
+     * Must be called on the UI thread BEFORE the first {@code new WebView(...)}.
+     * WebView on Android < 4.4 (pre-Chromium) requires CookieSyncManager to already exist
+     * when it is constructed, otherwise it throws IllegalStateException
+     * ("CookieSyncManager::createInstance() needs to be called before ...getInstance()").
+     */
+    public static void prepare(Context context) {
+        if (pendingContext == null && context != null) pendingContext = context.getApplicationContext();
+        ensureInit();
+    }
+
     private static synchronized void ensureInit() {
         if (initialized) return;
         Context context = pendingContext;
         if (context == null) return;
 
-        if (Build.VERSION.SDK_INT < 21) {
-            CookieSyncManager.createInstance(context.getApplicationContext());
-        }
+        try {
+            if (Build.VERSION.SDK_INT < 21) {
+                CookieSyncManager.createInstance(context.getApplicationContext());
+            }
 
-        CookieManager cookieManager = CookieManager.getInstance();
-        cookieManager.setAcceptCookie(true);
+            CookieManager cookieManager = CookieManager.getInstance();
+            cookieManager.setAcceptCookie(true);
+        } catch (Throwable t) {
+            // Never let cookie setup take the whole screen down.
+        }
 
         initialized = true;
     }

@@ -51,10 +51,18 @@ public class OddMarketApplication extends Application {
             f.addAction(android.content.Intent.ACTION_PACKAGE_REMOVED);
             f.addAction(android.content.Intent.ACTION_PACKAGE_REPLACED);
             f.addDataScheme("package");
+            final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+            final Runnable recheck = new Runnable() {
+                public void run() {
+                    UpdateChecker.checkNowAsync(OddMarketApplication.this);
+                }
+            };
             registerReceiver(new android.content.BroadcastReceiver() {
                 @Override
                 public void onReceive(Context context, android.content.Intent intent) {
-                    UpdateChecker.checkNowAsync(context);
+                    // Debounce: bulk installs/updates fire dozens of package events in a row.
+                    main.removeCallbacks(recheck);
+                    main.postDelayed(recheck, 5000L);
                 }
             }, f);
         } catch (Throwable t) {
@@ -64,11 +72,17 @@ public class OddMarketApplication extends Application {
     @Override
     public void onLowMemory() {
         super.onLowMemory();
-        MainActivity.trimMemory(true);
+        try {
+            MainActivity.trimMemory(true);
+        } catch (Throwable ignored) {
+        }
     }
 
     public void onTrimMemory(int level) {
-        MainActivity.trimMemoryLevel(level);
+        try {
+            MainActivity.trimMemoryLevel(level);
+        } catch (Throwable ignored) {
+        }
     }
 
     @Override

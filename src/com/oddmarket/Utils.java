@@ -341,19 +341,23 @@ public final class Utils {
         final Context appContext = context.getApplicationContext();
         new Thread(new Runnable() {
             public void run() {
-                SharedPreferences prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-                if (prefs.contains(KEY_ROOT_STATE)) {
-                    rootState = prefs.getInt(KEY_ROOT_STATE, 0);
-                    return;
-                }
-                if (!isSuBinaryPresent()) {
+                try {
+                    SharedPreferences prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+                    if (prefs.contains(KEY_ROOT_STATE)) {
+                        rootState = prefs.getInt(KEY_ROOT_STATE, 0);
+                        return;
+                    }
+                    if (!isSuBinaryPresent()) {
 
-                    rootState = 0;
-                    return;
+                        rootState = 0;
+                        return;
+                    }
+                    boolean granted = probeRoot();
+                    rootState = granted ? 1 : 0;
+                    savePrefs(prefs.edit().putInt(KEY_ROOT_STATE, rootState));
+                } catch (Throwable t) {
+                    if (rootState == -1) rootState = 0;
                 }
-                boolean granted = probeRoot();
-                rootState = granted ? 1 : 0;
-                savePrefs(prefs.edit().putInt(KEY_ROOT_STATE, rootState));
             }
         }, "OddMarket-RootCheck").start();
     }

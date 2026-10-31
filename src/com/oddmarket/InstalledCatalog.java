@@ -179,7 +179,8 @@ final class InstalledCatalog {
                     public void run() {
                         try {
                             putCache(cache, pkg, makeEntry(fetchOne(pkg)));
-                        } catch (Exception e) {
+                        } catch (Throwable e) {
+                            // Throwable: an Error in a pool thread would crash the whole app in background.
                             failed.incrementAndGet();
                         } finally {
                             done.countDown();

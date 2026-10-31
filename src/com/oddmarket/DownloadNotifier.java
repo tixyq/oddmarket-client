@@ -18,7 +18,7 @@ final class DownloadNotifier {
     static final int ID_DONE_BASE = 6000;
     static final int ID_UPDATES = 4712;
     private static final String CHANNEL_ID = "oddmarket_downloads";
-    private static final String CHANNEL_UPDATES = "oddmarket_updates";
+    private static final String CHANNEL_UPDATES = "oddmarket_updates_v2";
     private static final int FLAG_IMMUTABLE_COMPAT = 0x02000000;
 
     private DownloadNotifier() {}
@@ -52,7 +52,7 @@ final class DownloadNotifier {
             Constructor<?> ctor = chCls.getConstructor(String.class, CharSequence.class, int.class);
             Object channel = ctor.newInstance(channelId,
                     c.getString(updates ? R.string.notif_channel_updates : R.string.notif_channel_downloads),
-                    2 );
+                    updates ? 3 : 2 );
             Method create = NotificationManager.class.getMethod("createNotificationChannel", chCls);
             create.invoke(notificationManager(c), channel);
         } catch (Throwable t) {

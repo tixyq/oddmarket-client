@@ -54,6 +54,7 @@ public class WebActivity extends Activity {
         GhostTitle.insertSpacer(rootLayout, Theme.windowBackground(),
                 ghostHidden ? GhostTitle.compactHeightPx(this) : GhostTitle.heightPx(this));
 
+        CookieHelper.prepare(this);
         webView = new WebView(this);
         LinearLayout.LayoutParams webParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.FILL_PARENT, 0, 1.0f);

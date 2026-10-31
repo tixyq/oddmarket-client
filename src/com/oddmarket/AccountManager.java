@@ -128,6 +128,7 @@ public final class AccountManager {
             };
         }
 
+        CookieHelper.prepare(activity);
         final WebView webView = new WebView(activity);
         Utils.configureWebView(webView);
         CookieHelper.enableCookiesForWebView(webView);
