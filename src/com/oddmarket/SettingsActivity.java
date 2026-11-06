@@ -157,6 +157,8 @@ public class SettingsActivity extends Activity {
         });
 
         setupRootRequestButton();
+        setupLogButtons();
+        expandTouchAreas();
 
         View iconSelectorScroll = findViewById(R.id.icon_selector_scroll);
         if (android.os.Build.VERSION.SDK_INT < 16) {
@@ -365,6 +367,7 @@ public class SettingsActivity extends Activity {
         Utils.setTextColorById(this, R.id.settings_blur_label, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_anim_label, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_btn_check_updates, Theme.textPrimary());
+        Utils.setTextColorById(this, R.id.settings_btn_send_log, Theme.textPrimary());
         Utils.setTextColorById(this, R.id.settings_btn_request_root, Theme.textPrimary());
 
         View iconSelectorScroll = findViewById(R.id.icon_selector_scroll);
@@ -397,6 +400,52 @@ public class SettingsActivity extends Activity {
 
     private void checkForUpdates() {
         DetailsActivity.openByPackage(this, "com.oddmarket");
+    }
+
+    /** Touch targets of at least 48dp; the layout itself is unchanged. */
+    private void expandTouchAreas() {
+        int[] ids = {
+                R.id.settings_cb_rus_fix, R.id.settings_cb_legacy_dl, R.id.settings_cb_blur, R.id.settings_cb_anim,
+                R.id.settings_btn_check_updates, R.id.settings_btn_send_log, R.id.settings_btn_request_root,
+                R.id.link_telegram, R.id.link_owner
+        };
+        for (int i = 0; i < ids.length; i++) TouchExpander.expand(findViewById(ids[i]));
+        for (int i = 0; i < iconContainers.length; i++) TouchExpander.expand(findViewById(iconContainers[i]));
+        for (int i = 0; i < langContainers.length; i++) TouchExpander.expand(findViewById(langContainers[i]));
+        for (int i = 0; i < themeContainers.length; i++) TouchExpander.expand(findViewById(themeContainers[i]));
+    }
+
+    private void setupLogButtons() {
+        findViewById(R.id.settings_btn_send_log).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                sendLog();
+            }
+        });
+    }
+
+    private void sendLog() {
+        FileLogger.init(this);
+        File log = FileLogger.getLogFile();
+        if (log == null || log.length() == 0) {
+            Toast.makeText(this, R.string.toast_log_empty, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            Intent send = new Intent(Intent.ACTION_SEND);
+            send.setType("text/plain");
+            if (android.os.Build.VERSION.SDK_INT >= 24) {
+                send.putExtra(Intent.EXTRA_STREAM, Uri.parse("content://com.oddmarket.provider/log.txt"));
+                send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } else {
+                send.putExtra(Intent.EXTRA_STREAM, Uri.fromFile(log));
+            }
+            send.putExtra(Intent.EXTRA_SUBJECT, "OddMarket log");
+            startActivity(Intent.createChooser(send, getString(R.string.settings_send_log_label)));
+        } catch (Exception e) {
+            FileLogger.e(Utils.TAG, "Failed to send log", e);
+            Toast.makeText(this, R.string.toast_log_send_failed, Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void setupRootRequestButton() {

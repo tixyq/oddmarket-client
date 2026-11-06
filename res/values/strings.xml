@@ -61,6 +61,14 @@
     <string name="toast_install_failed_not_found">Installation failed: APK not found.</string>
     <string name="toast_autoinstall_blocked">Auto-install blocked. APK saved in Download folder.</string>
 
+    <string name="desc_back">Back</string>
+    <string name="desc_menu">More options</string>
+    <string name="desc_search">Search</string>
+    <string name="desc_logo">OddMarket home</string>
+    <string name="desc_loading">Loading</string>
+    <string name="desc_banner">Banner</string>
+    <string name="desc_screenshot_format">Screenshot %1$d of %2$d</string>
+    <string name="desc_app_icon_format">%1$s icon</string>
     <string name="desc_search_clear">Clear search</string>
     <string name="desc_page_prev">Previous page</string>
     <string name="desc_page_next">Next page</string>
@@ -73,6 +81,10 @@
     <string name="settings_legacy_download_label">Legacy Download</string>
     <string name="settings_blur_label">Enable Blur</string>
     <string name="settings_anim_label">Enable Animations</string>
+    <string name="settings_send_log_label">Send log</string>
+    <string name="toast_log_empty">Log is empty</string>
+    <string name="toast_log_send_failed">Failed to send log</string>
+    <string name="toast_allow_unknown_sources">Allow installing apps from OddMarket, then tap Install again.</string>
     <string name="settings_request_root_label">Request root access</string>
     <string name="settings_disclaimer">Oddmarket is a retro app and game store for old Android devices. All content is provided for informational purposes only. The administration is not responsible for third-party software.</string>
     <string name="settings_telegram_label">"Telegram community – "</string>

@@ -17,14 +17,14 @@ public final class FileLogger {
 
     private static final String LOG_FILE_NAME = "log.txt";
 
+    private static final String EXTERNAL_LOG_PATH = "/storage/emulated/0/log.txt";
+
     private static final long MAX_LOG_FILE_BYTES = 512 * 1024;
 
     private static final Object LOCK = new Object();
     private static volatile Context appContext;
 
     private static volatile boolean sessionStarted = false;
-
-    private static volatile boolean externalMirrorDisabled = false;
 
     private FileLogger() {}
 
@@ -50,9 +50,8 @@ public final class FileLogger {
                 + " app=" + (ctx != null ? ctx.getPackageName() : "?"));
     }
 
+    /** INFO is ignored: only WARN and ERROR are logged. */
     public static void i(String tag, String msg) {
-        Log.i(tag, msg);
-        write("INFO", tag, msg, null);
     }
 
     public static void w(String tag, String msg) {
@@ -125,21 +124,41 @@ public final class FileLogger {
         }
     }
 
+    /**
+     * Android 11+ (API 30) does not allow writing into the root of shared storage
+     * without "All files access" (MANAGE_EXTERNAL_STORAGE), which the user grants in Settings.
+     */
+    public static boolean hasExternalAccess() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                java.lang.reflect.Method m = Environment.class.getMethod("isExternalStorageManager");
+                return (Boolean) m.invoke(null);
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 23 && appContext != null) {
+                java.lang.reflect.Method m = Context.class.getMethod("checkSelfPermission", String.class);
+                return ((Integer) m.invoke(appContext, "android.permission.WRITE_EXTERNAL_STORAGE"))
+                        == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            }
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     private static void appendToMirror(String line) {
-        if (externalMirrorDisabled) return;
         FileOutputStream fos = null;
         try {
-            if (!Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
-                externalMirrorDisabled = true;
-                return;
+            if (!Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) return;
+            if (!hasExternalAccess()) return;
+            File externalLog = new File(EXTERNAL_LOG_PATH);
+            if (externalLog.length() > MAX_LOG_FILE_BYTES) {
+                externalLog.delete();
             }
-            File externalLog = new File(Environment.getExternalStorageDirectory(), LOG_FILE_NAME);
             fos = new FileOutputStream(externalLog, true);
             fos.write(line.getBytes("UTF-8"));
             fos.flush();
         } catch (Throwable t) {
-
-            externalMirrorDisabled = true;
+            // external log is best-effort; the internal log is always written
         } finally {
             if (fos != null) {
                 try {
@@ -155,7 +174,7 @@ public final class FileLogger {
             if (!Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
                 return;
             }
-            new File(Environment.getExternalStorageDirectory(), LOG_FILE_NAME).delete();
+            new File(EXTERNAL_LOG_PATH).delete();
         } catch (Throwable ignored) {
         }
     }

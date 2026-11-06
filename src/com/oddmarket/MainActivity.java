@@ -12,8 +12,6 @@ import android.text.Editable;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.TextWatcher;
-import android.text.style.ForegroundColorSpan;
-import android.text.style.RelativeSizeSpan;
 import android.util.DisplayMetrics;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -266,12 +264,48 @@ public class MainActivity extends Activity {
         loadData(true);
         loadBanners();
         askNotificationPermissionOnce();
+        if (!permDialogPending) askStorageAccessOnce();
 
         listView.post(new Runnable() {
             public void run() {
                 listView.requestFocus();
             }
         });
+    }
+
+    private boolean permDialogPending = false;
+
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode == 311) {
+            permDialogPending = false;
+            askStorageAccessOnce();
+        }
+    }
+
+    /**
+     * Storage access for log.txt in the root of shared storage, asked once at launch:
+     * Android 11+ needs "All files access" (system settings page), Android 6-10 the runtime permission.
+     */
+    private void askStorageAccessOnce() {
+        try {
+            android.content.SharedPreferences prefs = getSharedPreferences("prefs", MODE_PRIVATE);
+            if (prefs.getBoolean("storage_perm_asked", false)) return;
+            FileLogger.init(this);
+            if (FileLogger.hasExternalAccess()) return;
+            Utils.savePrefs(prefs.edit().putBoolean("storage_perm_asked", true));
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                try {
+                    startActivity(new Intent("android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION",
+                            Uri.parse("package:" + getPackageName())));
+                } catch (Exception e) {
+                    startActivity(new Intent("android.settings.MANAGE_ALL_FILES_ACCESS_PERMISSION"));
+                }
+            } else if (android.os.Build.VERSION.SDK_INT >= 23) {
+                java.lang.reflect.Method req = Activity.class.getMethod("requestPermissions", String[].class, int.class);
+                req.invoke(this, new String[]{"android.permission.WRITE_EXTERNAL_STORAGE"}, 312);
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     /** Android 13+: without POST_NOTIFICATIONS the "updates available" notification is silently dropped. Ask once. */
@@ -284,6 +318,7 @@ public class MainActivity extends Activity {
             int r = (Integer) check.invoke(this, "android.permission.POST_NOTIFICATIONS");
             if (r == android.content.pm.PackageManager.PERMISSION_GRANTED) return;
             Utils.savePrefs(prefs.edit().putBoolean("notif_perm_asked", true));
+            permDialogPending = true;
             java.lang.reflect.Method req = Activity.class.getMethod("requestPermissions", String[].class, int.class);
             req.invoke(this, new String[]{"android.permission.POST_NOTIFICATIONS"}, 311);
         } catch (Throwable ignored) {
@@ -434,6 +469,8 @@ public class MainActivity extends Activity {
 
         tabApps = (Button) findViewById(R.id.tab_apps);
         tabGames = (Button) findViewById(R.id.tab_games);
+        TouchExpander.expand(tabApps);
+        TouchExpander.expand(tabGames);
         tabApps.setTextColor(Theme.textPrimary());
         tabGames.setTextColor(Theme.textPrimary());
         applyTabBackgrounds();
@@ -524,6 +561,7 @@ public class MainActivity extends Activity {
     }
 
     private void wireBannerClick() {
+        bannerImageWrapper.setContentDescription(getString(R.string.desc_banner));
         bannerImageWrapper.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 if (currentBannerIdx < bannersList.size()) {
@@ -1790,6 +1828,8 @@ public class MainActivity extends Activity {
                     holder.imgPrev = (ImageView) footerRoot.findViewById(R.id.footer_prev);
                     holder.txtPage = (TextView) footerRoot.findViewById(R.id.footer_page_text);
                     holder.imgNext = (ImageView) footerRoot.findViewById(R.id.footer_next);
+                    TouchExpander.expand(holder.imgPrev);
+                    TouchExpander.expand(holder.imgNext);
 
                     holder.imgPrev.setOnClickListener(new View.OnClickListener() {
                         public void onClick(View v) {

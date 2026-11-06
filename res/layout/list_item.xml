@@ -10,6 +10,7 @@
     android:layout_height="wrap_content">
 
     <ImageView
+        android:contentDescription="@null"
         android:id="@+id/item_icon"
         android:layout_width="50dp"
         android:layout_height="50dp"

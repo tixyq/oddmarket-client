@@ -17,10 +17,6 @@ public class AppItem {
 
     public ArrayList<String> screenshots = new ArrayList<String>();
 
-    public String versionAndroidLine(Context context) {
-        return version + " (" + Utils.formatMinAndroid(context, minAndroid) + ")";
-    }
-
     public String versionLine(Context context) {
         boolean hasMin = minAndroid != null && minAndroid.length() > 0;
         String translatedCategory = Categories.translate(context, category);

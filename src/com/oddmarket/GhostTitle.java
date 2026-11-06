@@ -1037,7 +1037,9 @@ public class GhostTitle extends View {
     private boolean contains(Btn b, float x, float y, int slop) {
         Rect r = b.bounds;
         int bottom = (int) barBottom() + slopPx;
-        return x >= r.left - slop && x < r.right + slop && y >= r.top - slop && y < bottom + slop;
+        // touch area is at least 48dp wide even when the button is laid out narrower (44dp on small screens)
+        int ex = Math.max(0, ((int) (48 * density) - r.width()) / 2);
+        return x >= r.left - ex - slop && x < r.right + ex + slop && y >= r.top - slop && y < bottom + slop;
     }
 
     private Btn hit(float x, float y, int slop) {
@@ -1120,5 +1122,105 @@ public class GhostTitle extends View {
             return;
         }
         activity.openOptionsMenu();
+    }
+
+    // ---- Accessibility (TalkBack): expose the custom-drawn title bar buttons as virtual views ----
+
+    private static final int VID_BACK = 1;
+    private static final int VID_MENU = 2;
+    private static final int VID_SEARCH = 3;
+    private static final int VID_LOGO = 4;
+
+    private Object a11yProvider;
+
+    @Override
+    public android.view.accessibility.AccessibilityNodeProvider getAccessibilityNodeProvider() {
+        if (android.os.Build.VERSION.SDK_INT < 16) return null;
+        if (a11yProvider == null) a11yProvider = new A11yProvider();
+        return (android.view.accessibility.AccessibilityNodeProvider) a11yProvider;
+    }
+
+    private Btn btnForVirtualId(int vid) {
+        if (vid == VID_BACK) return backBtn;
+        if (vid == VID_MENU) return menuBtn;
+        if (vid == VID_SEARCH) return searchBtn;
+        return null;
+    }
+
+    private int virtualIdFor(Btn b) {
+        if (b == backBtn) return VID_BACK;
+        if (b == menuBtn) return VID_MENU;
+        return VID_SEARCH;
+    }
+
+    private CharSequence labelForVirtualId(int vid) {
+        switch (vid) {
+            case VID_BACK: return activity.getString(R.string.desc_back);
+            case VID_MENU: return activity.getString(R.string.desc_menu);
+            case VID_SEARCH: return activity.getString(R.string.desc_search);
+            default: return activity.getString(R.string.desc_logo);
+        }
+    }
+
+    private final class A11yProvider extends android.view.accessibility.AccessibilityNodeProvider {
+        @Override
+        public android.view.accessibility.AccessibilityNodeInfo createAccessibilityNodeInfo(int vid) {
+            android.view.accessibility.AccessibilityNodeInfo info;
+            int[] loc = new int[2];
+            getLocationOnScreen(loc);
+            if (vid == View.NO_ID) {
+                info = android.view.accessibility.AccessibilityNodeInfo.obtain(GhostTitle.this);
+                GhostTitle.super.onInitializeAccessibilityNodeInfo(info);
+                info.setContentDescription(title);
+                List<Btn> buttons = visibleButtons();
+                for (int i = 0; i < buttons.size(); i++) {
+                    info.addChild(GhostTitle.this, virtualIdFor(buttons.get(i)));
+                }
+                if (logoShown && logoAction != null) info.addChild(GhostTitle.this, VID_LOGO);
+                return info;
+            }
+            Rect r = new Rect();
+            if (vid == VID_LOGO) {
+                if (!(logoShown && logoAction != null)) return null;
+                logoHit.round(r);
+                r.top = 0;
+                r.bottom = barPx;
+            } else {
+                Btn b = btnForVirtualId(vid);
+                if (b == null || !visibleButtons().contains(b)) return null;
+                if (b == searchBtn && searchAction == null) return null;
+                r.set(b.bounds);
+                r.bottom = barPx;
+            }
+            info = android.view.accessibility.AccessibilityNodeInfo.obtain(GhostTitle.this, vid);
+            info.setParent(GhostTitle.this);
+            info.setPackageName(activity.getPackageName());
+            info.setClassName("android.widget.Button");
+            info.setContentDescription(labelForVirtualId(vid));
+            info.setClickable(true);
+            info.setEnabled(true);
+            info.setVisibleToUser(true);
+            info.addAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK);
+            info.setBoundsInParent(r);
+            Rect sr = new Rect(r);
+            sr.offset(loc[0], loc[1]);
+            info.setBoundsInScreen(sr);
+            return info;
+        }
+
+        @Override
+        public boolean performAction(int vid, int action, android.os.Bundle args) {
+            if (vid == View.NO_ID) return performAccessibilityAction(action, args);
+            if (action != android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) return false;
+            if (vid == VID_LOGO) {
+                if (logoAction == null) return false;
+                logoAction.run();
+                return true;
+            }
+            Btn b = btnForVirtualId(vid);
+            if (b == null) return false;
+            fire(b);
+            return true;
+        }
     }
 }

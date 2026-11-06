@@ -8,6 +8,7 @@
     android:padding="6dip">
 
     <ImageView
+        android:contentDescription="@null"
         android:id="@+id/notif_icon"
         android:layout_width="25dip"
         android:layout_height="25dip"

@@ -23,6 +23,8 @@ public class OddMarketApplication extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
+        FileLogger.init(this);
+        installCrashLogger();
         StrictModeSetup.enableIfDebuggable(this);
         Utils.disableConnectionReuse();
         CookieHelper.init(this);
@@ -42,6 +44,22 @@ public class OddMarketApplication extends Application {
                 registerPackageEvents();
             }
         });
+    }
+
+    private void installCrashLogger() {
+        try {
+            final Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
+            Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+                public void uncaughtException(Thread thread, Throwable ex) {
+                    try {
+                        FileLogger.e(Utils.TAG, "Uncaught exception in thread " + thread.getName(), ex);
+                    } catch (Throwable ignored) {
+                    }
+                    if (previous != null) previous.uncaughtException(thread, ex);
+                }
+            });
+        } catch (Throwable ignored) {
+        }
     }
 
     private void registerPackageEvents() {

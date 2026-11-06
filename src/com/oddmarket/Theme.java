@@ -10,7 +10,6 @@ public class Theme {
 
     public static final int PROGRESS_COLOR = 0xFF6E8DC4;
 
-    private static final String PREFS_NAME = "prefs";
     private static final String KEY_THEME = "app_theme";
 
     public static int CURRENT = LIGHT;

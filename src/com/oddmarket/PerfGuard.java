@@ -61,7 +61,6 @@ final class PerfGuard {
     static final String KEY_BLUR_USER = "blur_user_set";
     static final String KEY_ANIM_USER = "anim_user_set";
     private static final String KEY_BLUR = "blur_enabled";
-    private static final String KEY_ANIM = "anim_enabled";
 
     private static final int FPS_WINDOW = 20;
     private static final float BLUR_MIN_FPS = 25f;
@@ -79,10 +78,6 @@ final class PerfGuard {
 
     static boolean blurUserSet(Context c) {
         return prefs(c).getBoolean(KEY_BLUR_USER, false);
-    }
-
-    static boolean animUserSet(Context c) {
-        return prefs(c).getBoolean(KEY_ANIM_USER, false);
     }
 
     static void markBlurUserSet(Context c) {

@@ -36,6 +36,7 @@
             android:padding="2dip">
 
             <ImageView
+        android:contentDescription="@null"
                 android:id="@+id/widget_app1_icon"
                 android:layout_width="36dip"
                 android:layout_height="36dip"
@@ -62,6 +63,7 @@
             android:padding="2dip">
 
             <ImageView
+        android:contentDescription="@null"
                 android:id="@+id/widget_app2_icon"
                 android:layout_width="36dip"
                 android:layout_height="36dip"
@@ -88,6 +90,7 @@
         android:visibility="gone">
 
         <ImageView
+        android:contentDescription="@null"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:src="@drawable/ic_network_error"

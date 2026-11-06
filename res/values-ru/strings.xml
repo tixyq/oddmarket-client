@@ -61,6 +61,14 @@
     <string name="toast_install_failed_not_found">Установка не удалась: APK не найден.</string>
     <string name="toast_autoinstall_blocked">Автоустановка заблокирована. APK сохранён в папке Download.</string>
 
+    <string name="desc_back">Назад</string>
+    <string name="desc_menu">Ещё</string>
+    <string name="desc_search">Поиск</string>
+    <string name="desc_logo">OddMarket, на главную</string>
+    <string name="desc_loading">Загрузка</string>
+    <string name="desc_banner">Баннер</string>
+    <string name="desc_screenshot_format">Скриншот %1$d из %2$d</string>
+    <string name="desc_app_icon_format">Иконка %1$s</string>
     <string name="desc_search_clear">Очистить поиск</string>
     <string name="desc_page_prev">Предыдущая страница</string>
     <string name="desc_page_next">Следующая страница</string>
@@ -73,6 +81,10 @@
     <string name="settings_legacy_download_label">Устаревшая загрузка</string>
     <string name="settings_blur_label">Включить размытие</string>
     <string name="settings_anim_label">Включить анимации</string>
+    <string name="settings_send_log_label">Отправить лог</string>
+    <string name="toast_log_empty">Лог пуст</string>
+    <string name="toast_log_send_failed">Не удалось отправить лог</string>
+    <string name="toast_allow_unknown_sources">Разрешите установку приложений из OddMarket и нажмите «Установить» ещё раз.</string>
     <string name="settings_request_root_label">Запросить root-доступ</string>
     <string name="settings_disclaimer">Oddmarket – это ретро магазин приложений и игр под старые Android устройства. Весь контент предоставлен исключительно в ознакомительных целях. Администрация не несет ответственности за стороннее программное обеспечение.</string>
     <string name="settings_telegram_label">"Телеграм сообщество – "</string>

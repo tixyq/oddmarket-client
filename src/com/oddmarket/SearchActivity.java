@@ -193,9 +193,11 @@ public class SearchActivity extends Activity {
     }
 
     private void addSearchField() {
-        DisplayMetrics dm = getResources().getDisplayMetrics();
         int bar = GhostTitle.heightPx(this);
-        int h = Math.max(dp(32), Math.min(bar - dp(10), dp(40))) - dp(5);
+        // Visual height of the field; the touch area (EditText) is at least 48dp.
+        int vh = Math.max(dp(32), Math.min(bar - dp(10), dp(40))) - dp(5);
+        int h = Math.max(vh, dp(48));
+        int vInset = (h - vh) / 2;
 
         FrameLayout box = new FrameLayout(this);
         FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(
@@ -212,7 +214,9 @@ public class SearchActivity extends Activity {
         searchBox.setHintTextColor(Theme.textHint());
         searchBox.setTextSize(16);
         searchBox.setGravity(Gravity.CENTER_VERTICAL);
-        searchBox.setBackgroundDrawable(Theme.searchBoxBackground());
+        searchBox.setBackgroundDrawable(new android.graphics.drawable.InsetDrawable(
+                Theme.searchBoxBackground(), 0, vInset, 0, vInset));
+        searchBox.setMinimumHeight(dp(48));
         searchBox.setPadding(dp(12), 0, dp(40), 0);
         try {
             searchBox.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
@@ -225,6 +229,7 @@ public class SearchActivity extends Activity {
         clear.setGravity(Gravity.CENTER);
         clear.setClickable(true);
         clear.setFocusable(true);
+        clear.setContentDescription(getString(R.string.desc_search_clear));
         clear.setVisibility(View.GONE);
         CrossIconView cross = new CrossIconView(this);
         cross.setColor(Theme.textPrimary());
@@ -233,7 +238,8 @@ public class SearchActivity extends Activity {
         cross.setClickable(false);
         cross.setFocusable(false);
         clear.addView(cross, new LinearLayout.LayoutParams(dp(24), dp(24)));
-        box.addView(clear, new FrameLayout.LayoutParams(dp(40),
+        clear.setPadding(dp(8), 0, 0, 0); // keeps the cross where it was while the touch area is 48dp wide
+        box.addView(clear, new FrameLayout.LayoutParams(dp(48),
                 ViewGroup.LayoutParams.FILL_PARENT, Gravity.RIGHT));
         clearBtn = clear;
         clear.setOnClickListener(new View.OnClickListener() {
@@ -377,14 +383,6 @@ public class SearchActivity extends Activity {
         searchBox.setText(text);
         searchBox.setSelection(searchBox.getText().length());
         submit();
-    }
-
-    private void showKeyboard() {
-        try {
-            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-            if (imm != null) imm.showSoftInput(searchBox, 0);
-        } catch (Throwable ignored) {
-        }
     }
 
     private void releaseSearchFocus() {
@@ -709,6 +707,8 @@ public class SearchActivity extends Activity {
                 holder.imgPrev = (ImageView) footerRoot.findViewById(R.id.footer_prev);
                 holder.txtPage = (TextView) footerRoot.findViewById(R.id.footer_page_text);
                 holder.imgNext = (ImageView) footerRoot.findViewById(R.id.footer_next);
+                TouchExpander.expand(holder.imgPrev);
+                TouchExpander.expand(holder.imgNext);
                 holder.imgPrev.setOnClickListener(new View.OnClickListener() {
                     public void onClick(View v) {
                         if (hasPrev && !loading) {

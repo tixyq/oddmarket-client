@@ -304,6 +304,7 @@ public class DetailsActivity extends Activity {
 
     private void applyResponsiveHeaderLayout() {
         btnDownload = (Button) findViewById(R.id.details_btn_download);
+        TouchExpander.expand(btnDownload);
         LinearLayout headerContainer = (LinearLayout) findViewById(R.id.details_header_container);
         View leftColumn = findViewById(R.id.details_left_column);
         View actionRow = findViewById(R.id.details_action_row);
@@ -381,6 +382,7 @@ public class DetailsActivity extends Activity {
 
         appName = intent.getStringExtra("name");
         txtName.setText(appName);
+        imgIcon.setContentDescription(getString(R.string.desc_app_icon_format, appName == null ? "" : appName));
 
         siteVersion = intent.getStringExtra("version");
         txtVer.setText(siteVersion);
@@ -629,6 +631,7 @@ public class DetailsActivity extends Activity {
 
             MainActivity.loadSized(url, img, thumbMaxPx, thumbsLatch);
 
+            img.setContentDescription(getString(R.string.desc_screenshot_format, i + 1, appScreenshots.size()));
             img.setId(Utils.generateViewId());
             if (i == 0) firstThumbId = img.getId();
             img.setFocusable(true);
@@ -1272,6 +1275,7 @@ public class DetailsActivity extends Activity {
                 img = (ImageView) convertView;
             }
 
+            img.setContentDescription(getString(R.string.desc_screenshot_format, position + 1, overlayImages.size()));
             String url = overlayImages.get(position);
             MainActivity.showFullOrSmall(img, url, overlayShowFull || position == overlayStartIndex);
 

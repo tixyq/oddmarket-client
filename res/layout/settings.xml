@@ -24,6 +24,7 @@
             android:paddingBottom="20dp">
 
             <ImageView
+        android:contentDescription="@null"
                 android:id="@+id/settings_top_icon"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -154,6 +155,21 @@
                 android:focusable="true"
                 android:background="@drawable/list_item_selector"
                 android:tag="soft_row" />
+
+            <TextView
+                android:id="@+id/settings_btn_send_log"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:text="@string/settings_send_log_label"
+                android:textSize="18sp"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="@drawable/list_item_selector"
+                android:tag="soft_row" />
+
 
             <TextView
                 android:id="@+id/settings_btn_request_root"
@@ -352,6 +368,7 @@
                     android:clickable="true"
                     android:focusable="true">
                     <ImageView
+        android:contentDescription="@null"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:src="@drawable/ic_launcher" />
@@ -377,6 +394,7 @@
                     android:focusable="true"
                     android:layout_marginLeft="12dp">
                     <ImageView
+        android:contentDescription="@null"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:src="@drawable/ic_launcher2" />
@@ -402,6 +420,7 @@
                     android:focusable="true"
                     android:layout_marginLeft="12dp">
                     <ImageView
+        android:contentDescription="@null"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:src="@drawable/ic_launcher3" />
@@ -427,6 +446,7 @@
                     android:focusable="true"
                     android:layout_marginLeft="12dp">
                     <ImageView
+        android:contentDescription="@null"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:src="@drawable/ic_launcher4" />

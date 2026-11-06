@@ -15,6 +15,7 @@ public class ApkProvider extends ContentProvider {
     @Override
     public boolean onCreate() {
         DownloadRegistry.init(getContext());
+        FileLogger.init(getContext());
         return true;
     }
 
@@ -22,6 +23,10 @@ public class ApkProvider extends ContentProvider {
         String segment = uri.getLastPathSegment();
         if (segment == null) {
             return null;
+        }
+
+        if ("log.txt".equals(segment)) {
+            return FileLogger.getLogFile();
         }
 
         if (segment.contains("..") || segment.contains(File.separator) || segment.contains("/")) {
@@ -97,6 +102,7 @@ public class ApkProvider extends ContentProvider {
 
     @Override
     public String getType(Uri uri) {
+        if ("log.txt".equals(uri.getLastPathSegment())) return "text/plain";
         return "application/vnd.android.package-archive";
     }
 
