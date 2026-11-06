@@ -26,8 +26,8 @@ public class SettingsActivity extends Activity {
         super.attachBaseContext(Utils.applyLocale(newBase));
     }
 
-    private final int[] iconContainers = { R.id.icon_1_container, R.id.icon_2_container, R.id.icon_3_container, R.id.icon_4_container };
-    private final int[] iconChecks = { R.id.icon_1_check, R.id.icon_2_check, R.id.icon_3_check, R.id.icon_4_check };
+    private final int[] iconContainers = { R.id.icon_1_container, R.id.icon_2_container, R.id.icon_3_container, R.id.icon_4_container, R.id.icon_5_container };
+    private final int[] iconChecks = { R.id.icon_1_check, R.id.icon_2_check, R.id.icon_3_check, R.id.icon_4_check, R.id.icon_5_check };
 
     private final int[] langContainers = { R.id.lang_ru_container, R.id.lang_en_container };
     private final int[] langChecks = { R.id.lang_ru_check, R.id.lang_en_check };
@@ -41,7 +41,8 @@ public class SettingsActivity extends Activity {
             "com.oddmarket.Launcher1",
             "com.oddmarket.Launcher2",
             "com.oddmarket.Launcher3",
-            "com.oddmarket.Launcher4"
+            "com.oddmarket.Launcher4",
+            "com.oddmarket.Launcher5"
     };
 
     private RadioButton[] radioButtons;
@@ -179,23 +180,23 @@ public class SettingsActivity extends Activity {
                 iconCaption.setVisibility(View.GONE);
             }
         } else {
-            radioButtons = new RadioButton[4];
-            for (int i = 0; i < 4; i++) {
+            radioButtons = new RadioButton[iconChecks.length];
+            for (int i = 0; i < iconChecks.length; i++) {
                 radioButtons[i] = (RadioButton) findViewById(iconChecks[i]);
             }
 
             int currentIconIndex = prefs.getInt("selected_icon", 0);
-            if (currentIconIndex < 0 || currentIconIndex > 3) currentIconIndex = 0;
+            if (currentIconIndex < 0 || currentIconIndex >= iconChecks.length) currentIconIndex = 0;
 
             if (radioButtons[currentIconIndex] != null) {
                 radioButtons[currentIconIndex].setChecked(true);
             }
 
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < iconChecks.length; i++) {
                 updateIconContentDescription(findViewById(iconContainers[i]), i, i == currentIconIndex);
             }
 
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < iconChecks.length; i++) {
                 final int index = i;
                 View container = findViewById(iconContainers[i]);
                 if (container != null) {

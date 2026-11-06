@@ -459,6 +459,32 @@
                         android:layout_marginTop="5dp" />
                 </LinearLayout>
 
+                <LinearLayout
+                    android:id="@+id/icon_5_container"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:padding="10dp"
+                    android:background="@drawable/list_item_selector"
+                android:tag="soft_row"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:layout_marginLeft="12dp">
+                    <ImageView
+        android:contentDescription="@null"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:src="@drawable/ic_launcher5" />
+                    <RadioButton
+                        android:id="@+id/icon_5_check"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:clickable="false"
+                        android:focusable="false"
+                        android:layout_marginTop="5dp" />
+                </LinearLayout>
+
             </LinearLayout>
         </HorizontalScrollView>
 
