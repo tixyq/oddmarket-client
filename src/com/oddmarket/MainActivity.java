@@ -88,6 +88,8 @@ public class MainActivity extends Activity {
 
     private int currentPage = 1;
     private int lastLoadedPage = 1;
+    private String pageText;
+    private int pageTextFor = -1;
 
     private String lastLoadedTab = null;
     private String lastLoadedQuery = null;
@@ -160,6 +162,7 @@ public class MainActivity extends Activity {
             if (sizeOf(value) > maxBytes / 2) return;
             Bitmap old = map.put(key, value);
             currentBytes += sizeOf(value) - sizeOf(old);
+            if (old != null && old != value) BitmapPool.offer(old);
             trimTo(maxBytes);
         }
 
@@ -169,6 +172,7 @@ public class MainActivity extends Activity {
                 Map.Entry<String, Bitmap> eldest = it.next();
                 currentBytes -= sizeOf(eldest.getValue());
                 it.remove();
+                if (limit >= maxBytes) BitmapPool.offer(eldest.getValue());
             }
         }
     }
@@ -227,7 +231,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
+        SingleInstance.track(this);
 
         GhostTitle.prepareWindow(this);
 
@@ -695,6 +699,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (SingleInstance.refreshIfStale(this)) return;
         if (downloadUi == null) downloadUi = new DownloadUi(this, ghostTitle, null);
         downloadUi.start();
         UpdateChecker.checkNowAsync(this);
@@ -826,6 +831,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         isDestroyed = true;
+        SingleInstance.release(this);
         searchHandler.removeCallbacks(searchRunnable);
         bannerHandler.removeCallbacks(bannerRunnable);
         if (pendingAccountCheck != null) {
@@ -876,6 +882,13 @@ public class MainActivity extends Activity {
         button.setBackgroundDrawable(bg);
         button.setPadding(Theme.dpToPx(this, 12), Theme.dpToPx(this, 8),
                 Theme.dpToPx(this, 12), Theme.dpToPx(this, 8));
+        // Thick label outline that follows the button colour in every state: "Apps", "Games", "All".
+        if (button instanceof OutlineButton) {
+            int normal = elColor();
+            ((OutlineButton) button).setOutlineColors(normal,
+                    Theme.buttonStateColor(normal, Theme.buttonPressed()),
+                    Theme.buttonStateColor(normal, Theme.buttonFocused()));
+        }
     }
 
     @Override
@@ -989,7 +1002,7 @@ public class MainActivity extends Activity {
         intent.putExtra("description", item.description);
         intent.putExtra("download_url", item.downloadUrl);
         intent.putStringArrayListExtra("screenshots", item.screenshots);
-        startActivity(intent);
+        DetailsActivity.open(this, intent);
     }
 
     private void updateListViewHeight() {
@@ -1018,9 +1031,36 @@ public class MainActivity extends Activity {
 
         adapter.measureOnly = true;
         try {
+            // Rows are fixed-size cells (single-line texts, fixed 50dp icon): measure the first and the last
+            // item row, and if they agree, every row in between has the same height. Falls back to measuring
+            // every row when they differ (odd font scale, wrapped text, ...).
+            int itemCount = 0;
+            int footerIndex = -1;
+            for (int i = 0; i < count; i++) {
+                if (adapter.getItemViewType(i) == AppAdapter.VIEW_TYPE_ITEM) itemCount++;
+                else footerIndex = i;
+            }
+            boolean uniform = false;
+            int rowH = 0;
+            if (itemCount > 2) {
+                int lastItem = (footerIndex == count - 1) ? count - 2 : count - 1;
+                itemConvertView = adapter.getView(0, itemConvertView, listView);
+                itemConvertView.measure(widthSpec, heightSpec);
+                int firstH = itemConvertView.getMeasuredHeight();
+                itemConvertView = adapter.getView(lastItem, itemConvertView, listView);
+                itemConvertView.measure(widthSpec, heightSpec);
+                if (firstH == itemConvertView.getMeasuredHeight()) {
+                    uniform = true;
+                    rowH = firstH;
+                }
+            }
             for (int i = 0; i < count; i++) {
                 int viewType = adapter.getItemViewType(i);
                 if (viewType == AppAdapter.VIEW_TYPE_ITEM) {
+                    if (uniform) {
+                        totalHeight += rowH;
+                        continue;
+                    }
                     itemConvertView = adapter.getView(i, itemConvertView, listView);
                     itemConvertView.measure(widthSpec, heightSpec);
                     totalHeight += itemConvertView.getMeasuredHeight();
@@ -1076,7 +1116,7 @@ public class MainActivity extends Activity {
         return fixed;
     }
 
-    public static final ExecutorService imageExecutor = Executors.newFixedThreadPool(imageThreads());
+    public static final java.util.concurrent.ThreadPoolExecutor imageExecutor = ImageQueue.create(imageThreads());
 
     private static int imageThreads() {
         long max = Runtime.getRuntime().maxMemory();
@@ -1087,7 +1127,7 @@ public class MainActivity extends Activity {
 
     private static void runImage(final Runnable task) {
         try {
-            imageExecutor.execute(new Runnable() {
+            ImageQueue.submit(imageExecutor, new Runnable() {
                 public void run() {
                     try {
                         task.run();
@@ -1102,6 +1142,7 @@ public class MainActivity extends Activity {
     }
 
     private static void onImageOom() {
+        BitmapPool.clear();
         fullCache.clear();
         iconCache.trimTo(iconCacheLimit() / 3);
     }
@@ -1111,9 +1152,13 @@ public class MainActivity extends Activity {
     }
 
     private static Bitmap downloadBitmapWithRetry(String url, int maxDimensionPx, boolean opaque) {
+        return downloadBitmapWithRetry(url, maxDimensionPx, opaque, false);
+    }
+
+    private static Bitmap downloadBitmapWithRetry(String url, int maxDimensionPx, boolean opaque, boolean pooled) {
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
-                Bitmap bmp = Utils.downloadAndDecodeBitmap(url, maxDimensionPx, opaque);
+                Bitmap bmp = Utils.downloadAndDecodeBitmap(url, maxDimensionPx, opaque, pooled);
                 if (bmp != null) return bmp;
             } catch (OutOfMemoryError oom) {
                 onImageOom();
@@ -1130,6 +1175,7 @@ public class MainActivity extends Activity {
 
     public static void loadIcon(String rawUrl, final ImageView img) {
         if (rawUrl == null || rawUrl.length() == 0) {
+            BitmapPool.detach(img);
             img.setImageResource(R.drawable.ic_pic);
             return;
         }
@@ -1141,9 +1187,11 @@ public class MainActivity extends Activity {
         Bitmap cachedBmp = iconCache.get(url);
         if (cachedBmp != null) {
             img.setImageBitmap(cachedBmp);
+            BitmapPool.attach(img, cachedBmp);
             return;
         }
 
+        BitmapPool.detach(img);
         img.setImageResource(R.drawable.ic_pic);
 
         if (recentlyFailed(url)) return;
@@ -1165,6 +1213,8 @@ public class MainActivity extends Activity {
             public void run() {
                 Bitmap bmp = null;
                 boolean wanted;
+                // Don't start downloads while the list is moving; rows that scrolled away meanwhile are dropped below.
+                ScrollGate.awaitIdle();
                 synchronized (inFlight) {
                     ArrayList<ImageView> waiting = inFlight.get(url);
                     wanted = waiting != null && anyWaiterWants(url, waiting);
@@ -1175,7 +1225,7 @@ public class MainActivity extends Activity {
                 try {
                     android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
                     bmp = iconCache.get(url);
-                    if (bmp == null) bmp = downloadBitmapWithRetry(url, maxDimensionPx);
+                    if (bmp == null) bmp = downloadBitmapWithRetry(url, maxDimensionPx, false, true);
                     if (bmp != null) iconCache.put(url, bmp);
                     else markFailed(url);
                 } finally {
@@ -1189,7 +1239,10 @@ public class MainActivity extends Activity {
                             final ImageView target = waiters.get(i);
                             target.post(new Runnable() {
                                 public void run() {
-                                    if (url.equals(target.getTag())) target.setImageBitmap(result);
+                                    if (url.equals(target.getTag())) {
+                                        target.setImageBitmap(result);
+                                        BitmapPool.attach(target, result);
+                                    }
                                 }
                             });
                         }
@@ -1219,7 +1272,10 @@ public class MainActivity extends Activity {
     }
 
     public static void trimMemory(boolean severe) {
-        if (severe) pageCache.clear();
+        if (severe) {
+            pageCache.clear();
+            BitmapPool.clear();
+        }
         fullCache.clear();
         iconCache.trimTo(severe ? 0 : iconCacheLimit() / 3);
     }
@@ -1501,6 +1557,8 @@ public class MainActivity extends Activity {
         loadBannerImage(imgUrl, incomingView);
 
         final int fadeDur = Utils.isAnimEnabled(this) ? 400 : 0;
+        // Cross-fade as a texture: both images are rendered once into hardware layers for the fade (API 11+).
+        final boolean layered = fadeDur > 0 && Utils.setLayerType(activeView, true) & Utils.setLayerType(incomingView, true);
         final AlphaAnimation animOut = new AlphaAnimation(1.0f, 0.0f);
         animOut.setDuration(fadeDur);
         animOut.setFillAfter(true);
@@ -1516,9 +1574,19 @@ public class MainActivity extends Activity {
             }
             public void onAnimationEnd(Animation animation) {
                 activeView.setVisibility(View.INVISIBLE);
+                if (layered) Utils.setLayerType(activeView, false);
             }
             public void onAnimationRepeat(Animation animation) {}
         });
+        if (layered) {
+            animIn.setAnimationListener(new Animation.AnimationListener() {
+                public void onAnimationStart(Animation animation) {}
+                public void onAnimationEnd(Animation animation) {
+                    Utils.setLayerType(incomingView, false);
+                }
+                public void onAnimationRepeat(Animation animation) {}
+            });
+        }
 
         activeView.startAnimation(animOut);
         currentBannerIdx = nextIdx;
@@ -1857,7 +1925,11 @@ public class MainActivity extends Activity {
                 }
 
                 holder.imgPrev.setVisibility(hasPrevPages ? View.VISIBLE : View.INVISIBLE);
-                holder.txtPage.setText(getString(R.string.page_format, currentPage));
+                if (pageTextFor != currentPage || pageText == null) {
+                    pageText = getString(R.string.page_format, currentPage);
+                    pageTextFor = currentPage;
+                }
+                holder.txtPage.setText(pageText);
                 holder.imgNext.setVisibility(hasMorePages ? View.VISIBLE : View.INVISIBLE);
 
                 return holder.footerRoot;

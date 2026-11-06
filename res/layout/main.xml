@@ -82,14 +82,14 @@
             android:layout_width="fill_parent"
             android:layout_height="wrap_content">
 
-            <Button
+            <com.oddmarket.OutlineButton
                 android:id="@+id/tab_apps"
                 android:layout_width="0.0dip"
                 android:layout_height="wrap_content"
                 android:text="@string/tab_apps"
                 android:textSize="15sp"
                 android:layout_weight="1.0" />
-            <Button
+            <com.oddmarket.OutlineButton
                 android:id="@+id/tab_games"
                 android:layout_width="0.0dip"
                 android:layout_height="wrap_content"

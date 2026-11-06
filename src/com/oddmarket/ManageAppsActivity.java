@@ -113,6 +113,7 @@ public class ManageAppsActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (SingleInstance.refreshIfStale(this)) return;
         if (loaded) refreshInstalledState();
         if (downloadUi == null) {
             downloadUi = new DownloadUi(this, ghostTitle, new DownloadUi.Callback() {
@@ -166,6 +167,7 @@ public class ManageAppsActivity extends Activity {
         listView.setVisibility(View.GONE);
         adapter = new InstalledAdapter();
         listView.setAdapter(adapter);
+        listView.setOnScrollListener(ScrollGate.LIST);
         root.addView(listView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.FILL_PARENT));
 

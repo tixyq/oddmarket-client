@@ -51,6 +51,7 @@ public class SettingsActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (SingleInstance.refreshIfStale(this)) return;
         if (downloadUi == null) downloadUi = new DownloadUi(this, ghostTitle, null);
         downloadUi.start();
     }
@@ -67,6 +68,14 @@ public class SettingsActivity extends Activity {
         SingleInstance.claim(this);
         GhostTitle.prepareWindow(this);
         setTitle(R.string.title_preferences);
+        buildUi();
+    }
+
+    /**
+     * Builds (or rebuilds) the whole screen. Called again after a theme / language change, so the new
+     * settings show up instantly in the same activity instance - no restart, no process kill.
+     */
+    private void buildUi() {
         setContentView(R.layout.settings);
         Theme.applyFonts(findViewById(R.id.settings_root));
         Theme.applySoftRows(findViewById(R.id.settings_root));
@@ -208,16 +217,7 @@ public class SettingsActivity extends Activity {
 
                                 applyLauncherIcon(index);
 
-                                Toast.makeText(SettingsActivity.this, R.string.toast_restart_to_apply, Toast.LENGTH_SHORT).show();
-
-                                new Handler().postDelayed(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        finish();
-                                        android.os.Process.killProcess(android.os.Process.myPid());
-                                        System.exit(0);
-                                    }
-                                }, 2500);
+                                Toast.makeText(SettingsActivity.this, R.string.toast_icon_changed, Toast.LENGTH_SHORT).show();
                             }
                         }
                     });
@@ -283,7 +283,7 @@ public class SettingsActivity extends Activity {
                         }
 
                         Utils.savePrefs(prefs.edit().putString("app_language", langValues[index]));
-                        restartApp();
+                        applySettingsLive(true);
                     }
                 }
             });
@@ -330,23 +330,69 @@ public class SettingsActivity extends Activity {
                         }
 
                         Utils.savePrefs(prefs.edit().putInt("app_theme", themeValues[index]));
-                        restartApp();
+                        Theme.setCurrent(themeValues[index]);
+                        applySettingsLive(false);
                     }
                 }
             });
         }
     }
 
-    private void restartApp() {
-        Toast.makeText(this, R.string.toast_restart_to_apply, Toast.LENGTH_SHORT).show();
-        new Handler().postDelayed(new Runnable() {
+    private final Handler uiHandler = new Handler();
+
+    /**
+     * Theme / language were just saved: apply them right away.
+     * This screen is rebuilt in place; every other open screen is refreshed in the background.
+     */
+    private void applySettingsLive(final boolean languageChanged) {
+        if (languageChanged) Utils.switchLocaleLive(this, getApplicationContext());
+        Utils.settingsVersion++;
+        // Not inside the click dispatch: the view tree is about to be replaced.
+        uiHandler.post(new Runnable() {
             @Override
             public void run() {
-                finish();
-                android.os.Process.killProcess(android.os.Process.myPid());
-                System.exit(0);
+                if (isFinishing()) return;
+                rebuildUi();
+                SingleInstance.markCurrent(SettingsActivity.this);
+                SingleInstance.refreshOthers(SettingsActivity.this);
+                final Context app = getApplicationContext();
+                Utils.runBackground(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            WidgetUpdateWorker.updateAllWidgets(app);
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                });
             }
-        }, 2500);
+        });
+    }
+
+    private void rebuildUi() {
+        View scroll = findViewById(R.id.settings_scroll_root);
+        final int scrollY = scroll != null ? scroll.getScrollY() : 0;
+
+        if (downloadUi != null) {
+            downloadUi.stop();
+            downloadUi = null;
+        }
+        Theme.applyWindow(this);
+        setTitle(R.string.title_preferences);
+        buildUi();
+
+        downloadUi = new DownloadUi(this, ghostTitle, null);
+        downloadUi.start();
+
+        final View newScroll = findViewById(R.id.settings_scroll_root);
+        if (newScroll != null && scrollY > 0) {
+            newScroll.post(new Runnable() {
+                @Override
+                public void run() {
+                    newScroll.scrollTo(0, scrollY);
+                }
+            });
+        }
     }
 
     private void applyTheme() {
@@ -542,6 +588,7 @@ public class SettingsActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        uiHandler.removeCallbacksAndMessages(null);
         SingleInstance.release(this);
         super.onDestroy();
     }

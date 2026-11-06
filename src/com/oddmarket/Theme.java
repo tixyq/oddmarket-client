@@ -58,8 +58,20 @@ public class Theme {
         return CURRENT == DARK;
     }
 
+    /** Switches the theme at runtime; screens must be rebuilt/refreshed by the caller. */
+    public static void setCurrent(int theme) {
+        CURRENT = theme;
+    }
+
+    // Resource colors never change at runtime (light/dark are separate ids), so look each one up once.
+    private static final android.util.SparseIntArray COLOR_CACHE = new android.util.SparseIntArray();
+
     private static int color(int resId) {
-        return appContext.getResources().getColor(resId);
+        int i = COLOR_CACHE.indexOfKey(resId);
+        if (i >= 0) return COLOR_CACHE.valueAt(i);
+        int c = appContext.getResources().getColor(resId);
+        COLOR_CACHE.put(resId, c);
+        return c;
     }
 
     private static int color(int lightResId, int darkResId) {
@@ -165,7 +177,7 @@ public class Theme {
         private static final float[] EDGE_ALPHA = {0f, 0.45f, 0.85f, 1f, 1f};
         private static final float FEATHER_DP = 5f;
         private static final float FEATHER_FRACTION = 0.15f;
-        private static final float SQUARE_ALPHA = 0.8f;
+        static final float SQUARE_ALPHA = 0.8f;
 
         private final boolean round;
         private final int color;
@@ -295,6 +307,18 @@ public class Theme {
         }
     }
 
+    /**
+     * Opaque colour a flat button shows in the pressed / focused state: the base colour with the
+     * highlight laid over it exactly as SoftHighlight (square) draws it.
+     */
+    public static int buttonStateColor(int normal, int glow) {
+        float a = (android.graphics.Color.alpha(glow) / 255f) * SoftHighlight.SQUARE_ALPHA;
+        int r = Math.round(android.graphics.Color.red(normal) * (1f - a) + android.graphics.Color.red(glow) * a);
+        int g = Math.round(android.graphics.Color.green(normal) * (1f - a) + android.graphics.Color.green(glow) * a);
+        int b = Math.round(android.graphics.Color.blue(normal) * (1f - a) + android.graphics.Color.blue(glow) * a);
+        return android.graphics.Color.rgb(r, g, b);
+    }
+
     public static android.graphics.drawable.StateListDrawable buttonBackground() {
         return buttonBackground(buttonNormal());
     }
@@ -352,6 +376,8 @@ public class Theme {
         private final int pageColor;
         private final int pageFocused;
         private boolean focused = false;
+        private final android.graphics.RectF rect = new android.graphics.RectF();
+        private final float radius = 3f * android.content.res.Resources.getSystem().getDisplayMetrics().density;
 
         SearchBoxBackground() {
             if (isDark()) {
@@ -366,8 +392,8 @@ public class Theme {
         @Override
         public void draw(android.graphics.Canvas c) {
             paint.setColor(focused ? pageFocused : pageColor);
-            float r = 3f * android.content.res.Resources.getSystem().getDisplayMetrics().density;
-            c.drawRoundRect(new android.graphics.RectF(getBounds()), r, r, paint);
+            rect.set(getBounds());
+            c.drawRoundRect(rect, radius, radius, paint);
         }
 
         @Override

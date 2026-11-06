@@ -129,6 +129,8 @@ public class DetailsActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Only one details screen can exist: a newer one closes the older one.
+        SingleInstance.claim(this);
         GhostTitle.prepareWindow(this);
         setTitle(R.string.title_details);
 
@@ -161,6 +163,37 @@ public class DetailsActivity extends Activity {
         Intent intent = new Intent(context, DetailsActivity.class);
         intent.putExtra("pkg", pkg);
         intent.putExtra(EXTRA_FETCH, true);
+        open(context, intent);
+    }
+
+    private static final long REOPEN_GUARD_MS = 1000L;
+    private static long lastOpenMs = 0L;
+    private static String lastOpenPkg = null;
+
+    /**
+     * The only way screens should open the details page.
+     * - a double tap (or two quick triggers) for the same app opens it once;
+     * - if that app is already open, the existing page is brought to the front instead of a second copy;
+     * - a different app replaces the open page (the new instance closes the old one in onCreate).
+     */
+    static void open(Context context, Intent intent) {
+        String pkg = intent.getStringExtra("pkg");
+        if (pkg == null) pkg = "";
+        long now = android.os.SystemClock.uptimeMillis();
+        if (pkg.equals(lastOpenPkg) && now - lastOpenMs < REOPEN_GUARD_MS) return;
+        lastOpenPkg = pkg;
+        lastOpenMs = now;
+
+        Activity live = SingleInstance.current(DetailsActivity.class);
+        if (live instanceof DetailsActivity && pkg.length() > 0
+                && pkg.equals(((DetailsActivity) live).currentPkg)) {
+            Intent front = new Intent(context, DetailsActivity.class);
+            front.putExtras(intent);
+            front.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+            if (!(context instanceof Activity)) front.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(front);
+            return;
+        }
         context.startActivity(intent);
     }
 
@@ -1286,6 +1319,7 @@ public class DetailsActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (SingleInstance.refreshIfStale(this)) return;
         updateButtonState();
         if (downloadUi == null) {
             downloadUi = new DownloadUi(this, ghostTitle, new DownloadUi.Callback() {
@@ -1306,6 +1340,7 @@ public class DetailsActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        SingleInstance.release(this);
         destroyed = true;
         handler.removeCallbacks(swapToFullRunnable);
         if (zoomView != null) zoomView.stop();

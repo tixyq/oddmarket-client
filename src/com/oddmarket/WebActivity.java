@@ -28,6 +28,7 @@ public class WebActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (SingleInstance.refreshIfStale(this)) return;
         if (downloadUi == null) downloadUi = new DownloadUi(this, ghostTitle, null);
         downloadUi.start();
     }

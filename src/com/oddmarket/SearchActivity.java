@@ -83,6 +83,8 @@ public class SearchActivity extends Activity {
     private String query = "";
     private String shownQuery = null;
     private int page = 1;
+    private String pageText;
+    private int pageTextFor = -1;
     private boolean hasMore = false;
     private boolean hasPrev = false;
 
@@ -162,6 +164,7 @@ public class SearchActivity extends Activity {
         listView.setVisibility(View.GONE);
         adapter = new ResultsAdapter();
         listView.setAdapter(adapter);
+        listView.setOnScrollListener(ScrollGate.LIST);
         root.addView(listView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.FILL_PARENT, ViewGroup.LayoutParams.FILL_PARENT));
 
@@ -443,6 +446,7 @@ public class SearchActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (SingleInstance.refreshIfStale(this)) return;
         paintWindow();
         if (!keyboardOpen) lockSearchBox();
     }
@@ -623,7 +627,7 @@ public class SearchActivity extends Activity {
         intent.putExtra("description", item.description);
         intent.putExtra("download_url", item.downloadUrl);
         intent.putStringArrayListExtra("screenshots", item.screenshots);
-        startActivity(intent);
+        DetailsActivity.open(this, intent);
     }
 
     @Override
@@ -732,7 +736,11 @@ public class SearchActivity extends Activity {
                 holder.themeApplied = Theme.CURRENT;
             }
             holder.imgPrev.setVisibility(hasPrev ? View.VISIBLE : View.INVISIBLE);
-            holder.txtPage.setText(getString(R.string.page_format, page));
+            if (pageTextFor != page || pageText == null) {
+                pageText = getString(R.string.page_format, page);
+                pageTextFor = page;
+            }
+            holder.txtPage.setText(pageText);
             holder.imgNext.setVisibility(hasMore ? View.VISIBLE : View.INVISIBLE);
             return holder.footerRoot;
         }

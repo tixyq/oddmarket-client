@@ -160,6 +160,25 @@ public final class Utils {
         }
     }
 
+    private static Method layerTypeMethod;
+    private static boolean layerTypeLooked;
+
+    /** View.setLayerType(HARDWARE / NONE) where it exists (API 11+). Returns whether it was applied. */
+    public static boolean setLayerType(View v, boolean hardware) {
+        if (v == null || android.os.Build.VERSION.SDK_INT < 11) return false;
+        try {
+            if (!layerTypeLooked) {
+                layerTypeLooked = true;
+                layerTypeMethod = View.class.getMethod("setLayerType", int.class, android.graphics.Paint.class);
+            }
+            if (layerTypeMethod == null) return false;
+            layerTypeMethod.invoke(v, hardware ? 2 : 0, null);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     public static boolean isBlurEnabled(Context context) {
         return context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
                 .getBoolean("blur_enabled", PerfGuard.blurDefault());
@@ -496,9 +515,17 @@ public final class Utils {
      *               i.e. 2 bytes/pixel instead of 4. Icons keep ARGB_8888 to preserve alpha.
      */
     public static Bitmap downloadAndDecodeBitmap(String urlStr, int maxDimensionPx, boolean opaque) throws Exception {
+        return downloadAndDecodeBitmap(urlStr, maxDimensionPx, opaque, false);
+    }
+
+    /**
+     * @param pooled list icons only: decode into a recycled bitmap from BitmapPool (API 11+) and make the
+     *               result reusable in turn.
+     */
+    public static Bitmap downloadAndDecodeBitmap(String urlStr, int maxDimensionPx, boolean opaque, boolean pooled) throws Exception {
 
         File file = ImageDiskCache.fetchFile(urlStr, 5000);
-        if (file != null) return decodeSampledFile(file, maxDimensionPx, opaque);
+        if (file != null) return decodeSampledFile(file, maxDimensionPx, opaque, pooled);
 
         byte[] data = ImageDiskCache.fetch(urlStr, 5000).bytes;
 
@@ -507,12 +534,24 @@ public final class Utils {
         BitmapFactory.decodeByteArray(data, 0, data.length, boundsOpts);
         if (boundsOpts.outWidth <= 0 || boundsOpts.outHeight <= 0) return null;
 
-        BitmapFactory.Options decodeOpts = bitmapOptions(
-                sampleSizeFor(boundsOpts.outWidth, boundsOpts.outHeight, maxDimensionPx), opaque);
-        return BitmapFactory.decodeByteArray(data, 0, data.length, decodeOpts);
+        int sample = sampleSizeFor(boundsOpts.outWidth, boundsOpts.outHeight, maxDimensionPx);
+        BitmapFactory.Options decodeOpts = bitmapOptions(sample, opaque);
+        Bitmap reuse = pooled ? BitmapPool.prepare(decodeOpts, boundsOpts.outWidth, boundsOpts.outHeight, sample) : null;
+        Bitmap result = null;
+        try {
+            result = BitmapFactory.decodeByteArray(data, 0, data.length, decodeOpts);
+        } catch (IllegalArgumentException e) {
+            result = null;
+        }
+        if (result == null && reuse != null) {
+            BitmapPool.dropReuse(decodeOpts);
+            result = BitmapFactory.decodeByteArray(data, 0, data.length, decodeOpts);
+        }
+        if (pooled) BitmapPool.markPoolable(result);
+        return result;
     }
 
-    private static Bitmap decodeSampledFile(File file, int maxDimensionPx, boolean opaque) throws Exception {
+    private static Bitmap decodeSampledFile(File file, int maxDimensionPx, boolean opaque, boolean pooled) throws Exception {
         BitmapFactory.Options boundsOpts = new BitmapFactory.Options();
         boundsOpts.inJustDecodeBounds = true;
         java.io.FileInputStream probe = new java.io.FileInputStream(file);
@@ -527,11 +566,27 @@ public final class Utils {
             return null;
         }
 
-        BitmapFactory.Options decodeOpts = bitmapOptions(
-                sampleSizeFor(boundsOpts.outWidth, boundsOpts.outHeight, maxDimensionPx), opaque);
+        int sample = sampleSizeFor(boundsOpts.outWidth, boundsOpts.outHeight, maxDimensionPx);
+        BitmapFactory.Options decodeOpts = bitmapOptions(sample, opaque);
+        Bitmap reuse = pooled ? BitmapPool.prepare(decodeOpts, boundsOpts.outWidth, boundsOpts.outHeight, sample) : null;
+        Bitmap result = null;
+        try {
+            result = decodeFd(file, decodeOpts);
+        } catch (IllegalArgumentException e) {
+            result = null;
+        }
+        if (result == null && reuse != null) {
+            BitmapPool.dropReuse(decodeOpts);
+            result = decodeFd(file, decodeOpts);
+        }
+        if (pooled) BitmapPool.markPoolable(result);
+        return result;
+    }
+
+    private static Bitmap decodeFd(File file, BitmapFactory.Options opts) throws Exception {
         java.io.FileInputStream in = new java.io.FileInputStream(file);
         try {
-            return BitmapFactory.decodeFileDescriptor(in.getFD(), null, decodeOpts);
+            return BitmapFactory.decodeFileDescriptor(in.getFD(), null, opts);
         } finally {
             in.close();
         }
@@ -561,6 +616,64 @@ public final class Utils {
         if (existing != null) return existing;
         if (incoming == null) return null;
         return incoming.getApplicationContext();
+    }
+
+    /** Bumped on every live theme / language change; see SingleInstance. */
+    public static volatile int settingsVersion = 0;
+
+    private static void setConfigLocale(Configuration config, Locale locale) {
+        if (android.os.Build.VERSION.SDK_INT >= 17) {
+            try {
+                Configuration.class.getMethod("setLocale", Locale.class).invoke(config, locale);
+                return;
+            } catch (Exception e) {
+            }
+        }
+        config.locale = locale;
+    }
+
+    /** Applies the saved app language to already created contexts (activity, application) without a restart. */
+    public static void switchLocaleLive(Context... contexts) {
+        try {
+            if (contexts == null || contexts.length == 0) return;
+            String language = resolveAppLanguage(contexts[0]);
+            Locale locale = LANG_RU.equals(language) ? new Locale(LANG_RU) : Locale.ENGLISH;
+            Locale.setDefault(locale);
+            for (int i = 0; i < contexts.length; i++) {
+                if (contexts[i] == null) continue;
+                try {
+                    Resources res = contexts[i].getResources();
+                    Configuration config = new Configuration(res.getConfiguration());
+                    setConfigLocale(config, locale);
+                    res.updateConfiguration(config, res.getDisplayMetrics());
+                } catch (Throwable ignored) {
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** Rebuilds an activity: Activity.recreate() where it exists (API 11+), otherwise a silent restart of the screen. */
+    public static void recreateCompat(Activity activity) {
+        if (activity == null || activity.isFinishing()) return;
+        if (android.os.Build.VERSION.SDK_INT >= 11) {
+            try {
+                Activity.class.getMethod("recreate").invoke(activity);
+                return;
+            } catch (Throwable ignored) {
+            }
+        }
+        try {
+            Intent again = activity.getIntent();
+            activity.finish();
+            activity.startActivity(again);
+            try {
+                Activity.class.getMethod("overridePendingTransition", int.class, int.class)
+                        .invoke(activity, 0, 0);
+            } catch (Throwable ignored) {
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     public static Context applyLocale(Context base) {

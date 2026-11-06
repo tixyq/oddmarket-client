@@ -60,12 +60,14 @@ public class GhostTitle extends View {
     private static final int BLUR_FIRST_DIV = 16;
     private static final int BLUR_STEPS = 2;
 
-    private static final int BLUR_REAL_FPS = 10;
+    // Capture rate cap. The real interval still adapts to how long a capture takes (3x its cost), so slow
+    // devices keep the same ~1/3 duty cycle as before; fast ones now refresh twice as often.
+    private static final int BLUR_REAL_FPS = 20;
     private static final long BLUR_REAL_MS = 1000L / BLUR_REAL_FPS;
-    private static final long BLUR_TICK_MS = 66L;
-    private static final long BLUR_SAFETY_MS = 250L;
+    private static final long BLUR_TICK_MS = 33L;
+    private static final long BLUR_SAFETY_MS = 120L;
 
-    private static final long BLUR_MAX_MS = 400L;
+    private static final long BLUR_MAX_MS = 300L;
 
     private static final int TITLE_FADE_STEPS = 10;
 
@@ -120,7 +122,8 @@ public class GhostTitle extends View {
     private int iconColor;
     private int textColor;
     private int pressColor;
-    private Integer baseOverride;
+    private int baseOverride;
+    private boolean hasBaseOverride;
 
     private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final Paint.FontMetrics fontMetrics = new Paint.FontMetrics();
@@ -465,7 +468,8 @@ public class GhostTitle extends View {
     }
 
     public GhostTitle setBaseColor(int color) {
-        baseOverride = Integer.valueOf(color);
+        baseOverride = color;
+        hasBaseOverride = true;
         buildShaders();
         invalidate();
         return this;
@@ -540,7 +544,7 @@ public class GhostTitle extends View {
     }
 
     private void buildShaders() {
-        int base = (baseOverride != null) ? baseOverride.intValue() : Theme.windowBackground();
+        int base = hasBaseOverride ? baseOverride : Theme.windowBackground();
 
         surfacePaint.setShader(null);
         surfacePaint.setColor(base | 0xFF000000);
@@ -1163,10 +1167,13 @@ public class GhostTitle extends View {
     }
 
     private final class A11yProvider extends android.view.accessibility.AccessibilityNodeProvider {
+        private final int[] loc = new int[2];
+        private final Rect r = new Rect();
+        private final Rect sr = new Rect();
+
         @Override
         public android.view.accessibility.AccessibilityNodeInfo createAccessibilityNodeInfo(int vid) {
             android.view.accessibility.AccessibilityNodeInfo info;
-            int[] loc = new int[2];
             getLocationOnScreen(loc);
             if (vid == View.NO_ID) {
                 info = android.view.accessibility.AccessibilityNodeInfo.obtain(GhostTitle.this);
@@ -1179,7 +1186,6 @@ public class GhostTitle extends View {
                 if (logoShown && logoAction != null) info.addChild(GhostTitle.this, VID_LOGO);
                 return info;
             }
-            Rect r = new Rect();
             if (vid == VID_LOGO) {
                 if (!(logoShown && logoAction != null)) return null;
                 logoHit.round(r);
@@ -1202,7 +1208,7 @@ public class GhostTitle extends View {
             info.setVisibleToUser(true);
             info.addAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK);
             info.setBoundsInParent(r);
-            Rect sr = new Rect(r);
+            sr.set(r);
             sr.offset(loc[0], loc[1]);
             info.setBoundsInScreen(sr);
             return info;

@@ -75,7 +75,7 @@
     <string name="desc_icon_option_format">App icon option %1$d</string>
     <string name="desc_selected_suffix">, selected</string>
 
-    <string name="toast_restart_to_apply">Restart the application to apply the settings</string>
+    <string name="toast_icon_changed">Launcher icon changed</string>
     <string name="toast_no_browser_found">No browser found</string>
     <string name="settings_rus_fix_label">Russian URL fix</string>
     <string name="settings_legacy_download_label">Legacy Download</string>

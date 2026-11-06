@@ -75,7 +75,7 @@
     <string name="desc_icon_option_format">Вариант значка приложения %1$d</string>
     <string name="desc_selected_suffix">, выбрано</string>
 
-    <string name="toast_restart_to_apply">Перезапустите приложение, чтобы применить настройки</string>
+    <string name="toast_icon_changed">Иконка приложения изменена</string>
     <string name="toast_no_browser_found">Браузер не найден</string>
     <string name="settings_rus_fix_label">Фикс российских ссылок</string>
     <string name="settings_legacy_download_label">Устаревшая загрузка</string>
