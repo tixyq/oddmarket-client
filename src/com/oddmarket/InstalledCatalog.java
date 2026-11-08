@@ -64,7 +64,7 @@ final class InstalledCatalog {
     }
 
     static String url(String pkg) {
-        return "http://lime.txy-50b.workers.dev/?pkg=" + Uri.encode(pkg);
+        return "https://lime-q67t9qoet-oddm.vercel.app/?pkg=" + Uri.encode(pkg);
     }
 
     static JSONObject fetchOne(String pkg) throws Exception {
