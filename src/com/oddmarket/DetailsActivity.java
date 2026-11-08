@@ -233,7 +233,7 @@ public class DetailsActivity extends Activity {
                 int errRes = 0;
                 JSONObject found = null;
                 try {
-                    String jsonStr = Utils.downloadString("http://odd.txy-50b.workers.dev/?pkg=" + Uri.encode(pkg));
+                    String jsonStr = Utils.downloadString("http://lime.txy-50b.workers.dev/?pkg=" + Uri.encode(pkg));
                     JSONArray items = new JSONObject(jsonStr).optJSONArray("items");
                     if (items != null && items.length() > 0) {
                         found = items.getJSONObject(0);

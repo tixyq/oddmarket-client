@@ -517,7 +517,7 @@ public class SearchActivity extends Activity {
     }
 
     private String buildUrl(int pg, String q) throws Exception {
-        return "http://odd.txy-50b.workers.dev/?page=" + pg
+        return "http://lime.txy-50b.workers.dev/?page=" + pg
                 + "&tab=all"
                 + "&tablet=" + (isTablet ? "1" : "0")
                 + "&sdk=" + android.os.Build.VERSION.SDK_INT
