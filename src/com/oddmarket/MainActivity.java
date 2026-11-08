@@ -1672,7 +1672,7 @@ public class MainActivity extends Activity {
             queryEnc = java.net.URLEncoder.encode(query, "UTF-8");
         }
 
-        String urlStr = "https://lime-q67t9qoet-oddm.vercel.app/?page=" + page
+        String urlStr = "http://lime.alwaysdata.net/?page=" + page
                       + "&tab=" + tab
                       + "&tablet=" + (isTablet ? "1" : "0")
                       + "&sdk=" + android.os.Build.VERSION.SDK_INT;

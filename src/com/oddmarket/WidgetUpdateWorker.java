@@ -82,7 +82,7 @@ public class WidgetUpdateWorker {
         applyWidgetTheme(views);
 
         try {
-            String jsonStr = Utils.downloadString("https://lime-q67t9qoet-oddm.vercel.app/?page=1&tab=all&sdk="
+            String jsonStr = Utils.downloadString("http://lime.alwaysdata.net/?page=1&tab=all&sdk="
                     + android.os.Build.VERSION.SDK_INT, 8000);
             JSONObject response = new JSONObject(jsonStr);
             JSONArray items = response.optJSONArray("items");

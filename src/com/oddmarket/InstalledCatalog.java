@@ -64,7 +64,7 @@ final class InstalledCatalog {
     }
 
     static String url(String pkg) {
-        return "https://lime-q67t9qoet-oddm.vercel.app/?pkg=" + Uri.encode(pkg);
+        return "http://lime.alwaysdata.net/?pkg=" + Uri.encode(pkg);
     }
 
     static JSONObject fetchOne(String pkg) throws Exception {

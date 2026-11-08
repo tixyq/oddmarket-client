@@ -517,7 +517,7 @@ public class SearchActivity extends Activity {
     }
 
     private String buildUrl(int pg, String q) throws Exception {
-        return "https://lime-q67t9qoet-oddm.vercel.app/?page=" + pg
+        return "http://lime.alwaysdata.net/?page=" + pg
                 + "&tab=all"
                 + "&tablet=" + (isTablet ? "1" : "0")
                 + "&sdk=" + android.os.Build.VERSION.SDK_INT
